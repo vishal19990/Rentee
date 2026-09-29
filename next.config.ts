@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Overridable so a production build can be verified without touching a running dev server's .next.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   serverExternalPackages: ["mongoose", "bcryptjs"],
   // Old bookmarks: leases were replaced by month-to-month rentals.
   async redirects() {

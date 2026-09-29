@@ -1,8 +1,14 @@
 /**
  * Seeds an admin account and (on an empty database) realistic demo data.
  *
- *   npm run seed            -> create admin if missing; add demo data if there are no properties
- *   npm run seed -- --reset -> wipe all Rentee collections first, then seed
+ *   npm run seed                  -> create admin if missing; add demo data if there are no properties
+ *   npm run seed -- --admin-only  -> only create the admin (use this for production)
+ *   npm run seed -- --reset       -> wipe all Rentee data first, then seed (local databases only,
+ *                                    unless --force is also given)
+ *
+ * Admin credentials: ADMIN_EMAIL / ADMIN_PASSWORD / ADMIN_NAME (or SEED_ADMIN_EMAIL /
+ * SEED_ADMIN_PASSWORD). Against a non-local MONGODB_URI (e.g. Atlas) a password must be given
+ * explicitly — the dev default "rentee123" is never used there.
  */
 import path from "node:path";
 import bcrypt from "bcryptjs";
@@ -12,7 +18,7 @@ import mongoose from "mongoose";
 dotenv.config({ path: path.join(process.cwd(), ".env.local"), quiet: true });
 dotenv.config({ path: path.join(process.cwd(), ".env"), quiet: true });
 
-const { connectDB } = await import("../src/lib/db");
+const { connectDB, mongoUri } = await import("../src/lib/db");
 const { User } = await import("../src/models/User");
 const { Property } = await import("../src/models/Property");
 const { Tenant } = await import("../src/models/Tenant");
@@ -22,9 +28,20 @@ const { Maintenance } = await import("../src/models/Maintenance");
 const { addDays, addMonths, localToday, monthOf } = await import("../src/lib/rent");
 const { minorDigits } = await import("../src/lib/money");
 
-const reset = process.argv.includes("--reset");
-const email = (process.env.SEED_ADMIN_EMAIL || "admin@rentee.local").toLowerCase();
-const password = process.env.SEED_ADMIN_PASSWORD || "rentee123";
+const args = process.argv.slice(2);
+const reset = args.includes("--reset");
+const force = args.includes("--force");
+const adminOnly = args.includes("--admin-only");
+
+const uri = mongoUri();
+const isLocalDb = /^mongodb:\/\/(?:[^@/]*@)?(127\.0\.0\.1|localhost)(:\d+)?\//.test(uri);
+const explicitPassword = process.env.ADMIN_PASSWORD || process.env.SEED_ADMIN_PASSWORD;
+const email = (process.env.ADMIN_EMAIL || process.env.SEED_ADMIN_EMAIL || "admin@rentee.local").trim().toLowerCase();
+const password = explicitPassword || "rentee123";
+const adminName = process.env.ADMIN_NAME?.trim() || "Admin";
+
+/** Hides credentials when printing the connection string. */
+const redacted = uri.replace(/\/\/[^@/]*@/, "//***@");
 
 /** Whole currency units -> minor units. */
 const money = (major: number) => Math.round(major * 10 ** minorDigits());
@@ -37,6 +54,17 @@ function monthsAgo(today: string, n: number): string {
 }
 
 async function main() {
+  if (!isLocalDb && !explicitPassword) {
+    throw new Error("Refusing to create an admin with the default password on a non-local database. Set ADMIN_PASSWORD (and ADMIN_EMAIL).");
+  }
+  if (!isLocalDb && password === "rentee123") throw new Error("Choose a real ADMIN_PASSWORD for a non-local database (not the dev default).");
+  if (password.length < 8) throw new Error("ADMIN_PASSWORD must be at least 8 characters.");
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error(`ADMIN_EMAIL "${email}" is not a valid email address.`);
+  if (reset && !isLocalDb && !force) {
+    throw new Error("--reset on a non-local database would wipe real data. Add --force if you really mean it.");
+  }
+
+  console.log(`Database: ${redacted}`);
   await connectDB();
   await Promise.all([User.init(), Property.init(), Tenant.init(), Rental.init(), Payment.init(), Maintenance.init()]);
 
@@ -50,6 +78,11 @@ async function main() {
       Payment.deleteMany({}),
       Maintenance.deleteMany({}),
     ]);
+    // Collections without a model import here: notifications, reminders, settings and photos (GridFS).
+    const db = mongoose.connection.db!;
+    for (const name of ["notifications", "reminderlogs", "appsettings", "photos.files", "photos.chunks"]) {
+      await db.collection(name).deleteMany({});
+    }
     // Leftover from before month-to-month rentals replaced leases.
     const legacy = await mongoose.connection.db!.listCollections({ name: "leases" }).toArray();
     if (legacy.length) await mongoose.connection.db!.dropCollection("leases");
@@ -58,8 +91,13 @@ async function main() {
   if (await User.exists({ email })) {
     console.log(`Admin ${email} already exists (password unchanged).`);
   } else {
-    await User.create({ name: "Admin", email, passwordHash: await bcrypt.hash(password, 12) });
-    console.log(`Created admin ${email} / ${password}`);
+    await User.create({ name: adminName, email, passwordHash: await bcrypt.hash(password, 12) });
+    console.log(explicitPassword ? `Created admin ${email} (password from ADMIN_PASSWORD).` : `Created admin ${email} / ${password}`);
+  }
+
+  if (adminOnly) {
+    console.log("--admin-only: skipping demo data.");
+    return;
   }
 
   if (await Property.exists({})) {

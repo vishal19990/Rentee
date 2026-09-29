@@ -1,0 +1,27 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+# Deploy: Render Dashboard → New → Blueprint → pick this repo. You'll be asked for MONGODB_URI.
+services:
+  - type: web
+    name: rentee
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm ci && npm run build
+    # `next start -H 0.0.0.0` listens on $PORT (set by Render).
+    startCommand: npm start
+    healthCheckPath: /login
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: NODE_ENV
+        value: production
+      - key: AUTH_SECRET
+        generateValue: true
+      - key: MONGODB_URI
+        sync: false # set in the dashboard: your MongoDB Atlas connection string
+      - key: NEXT_PUBLIC_CURRENCY
+        value: INR
+      - key: NEXT_PUBLIC_DEFAULT_COUNTRY_CODE
+        value: "91"
+      - key: TZ # "today" for due/overdue dates follows this timezone
+        value: Asia/Kolkata

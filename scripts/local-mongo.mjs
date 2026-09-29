@@ -7,7 +7,8 @@
  *
  * A mongod (via mongodb-memory-server, data persisted in .data/db) is only started when
  * MONGODB_URI points at 127.0.0.1/localhost:27017 and nothing is already listening there.
- * If you have a real MongoDB (local or remote), it is used as-is.
+ * If you have a real MongoDB (local or remote, e.g. Atlas), it is used as-is, and nothing is ever
+ * spawned when NODE_ENV=production. (`npm start` does not use this script at all.)
  */
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -41,6 +42,11 @@ function portOpen(port) {
 }
 
 async function ensureMongo() {
+  if (process.env.NODE_ENV === "production") {
+    // Never spawn a throwaway database in production; MONGODB_URI must point at a real server.
+    console.log("[local-mongo] NODE_ENV=production: not starting a local mongod.");
+    return null;
+  }
   if (!targetsLocalDefault(uri)) {
     console.log(`[local-mongo] MONGODB_URI is not the local default; using it as-is.`);
     return null;

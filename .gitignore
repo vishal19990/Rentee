@@ -1,8 +1,9 @@
 node_modules/
 .next/
+.next-verify/
 out/
-.data/
-uploads/
+/.data/
+/uploads/
 .env
 .env.local
 .env*.local
