@@ -1,0 +1,245 @@
+/**
+ * Admin notifications: pure generation + reconciliation logic (no database access).
+ *
+ * The sync (lib/notification-sync.ts) computes the *desired* set of notifications from current
+ * data and reconciles it with what is stored:
+ *   - desired key not stored            -> create
+ *   - stored & unresolved, not desired  -> resolve (condition cleared: rent paid, request done, moved out…)
+ *   - stored & resolved, desired again  -> reopen (condition came back, e.g. request reopened)
+ *   - stored & unresolved, text changed -> update text (e.g. balance after a partial payment)
+ * Keys are unique per type + subject + period, so repeated syncs never duplicate.
+ */
+import { formatDate } from "./format";
+import { formatMoney } from "./money";
+import { addMonths, formatMonth, monthOf, type RentMonth } from "./rent";
+
+export const NOTIFICATION_TYPES = ["rent_overdue", "rent_due_soon", "move_out_soon", "maintenance_pending"] as const;
+export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
+export type NotificationCategory = "alert" | "reminder";
+
+export const CATEGORY_OF: Record<NotificationType, NotificationCategory> = {
+  rent_overdue: "alert",
+  rent_due_soon: "reminder",
+  move_out_soon: "reminder",
+  maintenance_pending: "alert",
+};
+
+export type NotificationThresholds = {
+  /** N: remind this many days before a rent due date. */
+  dueSoonDays: number;
+  /** M: remind this many days before a scheduled move-out. */
+  moveOutDays: number;
+  /** K: alert when an open/in-progress request is older than this many days. */
+  maintenanceDays: number;
+};
+
+export const DEFAULT_THRESHOLDS: NotificationThresholds = { dueSoonDays: 3, moveOutDays: 7, maintenanceDays: 7 };
+
+/** Minimum time between two background syncs. */
+export const SYNC_INTERVAL_MS = 5 * 60 * 1000;
+
+export type NotificationSpec = {
+  key: string;
+  type: NotificationType;
+  category: NotificationCategory;
+  title: string;
+  body: string;
+  link: string;
+  rentalId?: string;
+  propertyId?: string;
+  tenantId?: string;
+  maintenanceId?: string;
+  /** Month (YYYY-MM) or date (YYYY-MM-DD) the notification is about, when relevant. */
+  period?: string;
+};
+
+export type RentalInput = {
+  id: string;
+  propertyId: string;
+  propertyName: string;
+  tenantId: string;
+  tenantName: string;
+  status: "active" | "moved_out";
+  moveOutDate: string | null;
+  monthlyRent: number;
+  dueDay: number;
+  schedule: RentMonth[];
+};
+
+export type MaintenanceInput = {
+  id: string;
+  title: string;
+  propertyId: string;
+  propertyName: string;
+  status: "open" | "in_progress" | "done";
+  priority: "low" | "medium" | "high" | "urgent";
+  createdAt: Date;
+};
+
+const pad = (n: number) => String(n).padStart(2, "0");
+
+/** Whole days from ISO date `from` to ISO date `to` (positive when `to` is later). */
+export function daysBetween(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+}
+
+export function notificationKey(type: NotificationType, subjectId: string, period?: string): string {
+  return period ? `${type}:${subjectId}:${period}` : `${type}:${subjectId}`;
+}
+
+function inDays(n: number): string {
+  return n === 0 ? "today" : n === 1 ? "tomorrow" : `in ${n} days`;
+}
+
+/** Computes every notification whose condition currently holds. */
+export function desiredNotifications(input: {
+  rentals: RentalInput[];
+  maintenance: MaintenanceInput[];
+  thresholds: NotificationThresholds;
+  today: string;
+  now: Date;
+}): NotificationSpec[] {
+  const { rentals, maintenance, thresholds, today, now } = input;
+  const out: NotificationSpec[] = [];
+
+  for (const r of rentals) {
+    const refs = { rentalId: r.id, propertyId: r.propertyId, tenantId: r.tenantId };
+    const link = `/rentals/${r.id}`;
+
+    // Rent overdue: one per rental + month past its due day with a balance (arrears stay
+    // alerts even after the tenant moves out — the money is still owed).
+    for (const m of r.schedule) {
+      if (!m.pastDue || m.balance <= 0) continue;
+      out.push({
+        key: notificationKey("rent_overdue", r.id, m.month),
+        type: "rent_overdue",
+        category: "alert",
+        title: `Rent overdue: ${r.propertyName}`,
+        body: `${r.tenantName} owes ${formatMoney(m.balance)} for ${formatMonth(m.month)} (due ${formatDate(m.dueDate)}).`,
+        link,
+        period: m.month,
+        ...refs,
+      });
+    }
+
+    if (r.status !== "active") continue;
+
+    // Rent due soon: unpaid month whose due date is within N days (today counts).
+    // Candidates: listed months not yet past due, plus next month (not listed yet).
+    const candidates: { month: string; dueDate: string; balance: number }[] = r.schedule
+      .filter((m) => !m.pastDue && m.balance > 0)
+      .map((m) => ({ month: m.month, dueDate: m.dueDate, balance: m.balance }));
+    const lastListed = r.schedule.length ? r.schedule[r.schedule.length - 1].month : null;
+    if (lastListed) {
+      const next = addMonths(monthOf(today) > lastListed ? monthOf(today) : lastListed, 1);
+      const listedNext = r.schedule.find((m) => m.month === next);
+      const withinStay = !r.moveOutDate || next <= monthOf(r.moveOutDate);
+      if (!listedNext && withinStay) {
+        candidates.push({ month: next, dueDate: `${next}-${pad(r.dueDay)}`, balance: r.monthlyRent });
+      }
+    }
+    for (const c of candidates) {
+      const days = daysBetween(today, c.dueDate);
+      if (days < 0 || days > thresholds.dueSoonDays) continue;
+      out.push({
+        key: notificationKey("rent_due_soon", r.id, c.month),
+        type: "rent_due_soon",
+        category: "reminder",
+        title: `Rent due ${inDays(days)}: ${r.propertyName}`,
+        body: `${formatMoney(c.balance)} from ${r.tenantName} for ${formatMonth(c.month)} is due on ${formatDate(c.dueDate)}.`,
+        link,
+        period: c.month,
+        ...refs,
+      });
+    }
+
+    // Moving out soon: active rental with a move-out date within M days.
+    if (r.moveOutDate) {
+      const days = daysBetween(today, r.moveOutDate);
+      if (days >= 0 && days <= thresholds.moveOutDays) {
+        out.push({
+          key: notificationKey("move_out_soon", r.id, r.moveOutDate),
+          type: "move_out_soon",
+          category: "reminder",
+          title: `Moving out ${inDays(days)}: ${r.propertyName}`,
+          body: `${r.tenantName} moves out on ${formatDate(r.moveOutDate)}.`,
+          link,
+          period: r.moveOutDate,
+          ...refs,
+        });
+      }
+    }
+  }
+
+  // Maintenance pending: open / in-progress request older than K days, or urgent/high from creation.
+  for (const m of maintenance) {
+    if (m.status === "done") continue;
+    const ageDays = (now.getTime() - m.createdAt.getTime()) / 86_400_000;
+    const important = m.priority === "urgent" || m.priority === "high";
+    if (!important && ageDays <= thresholds.maintenanceDays) continue;
+    const age = Math.floor(ageDays);
+    out.push({
+      key: notificationKey("maintenance_pending", m.id),
+      type: "maintenance_pending",
+      category: "alert",
+      title: important ? `${m.priority === "urgent" ? "Urgent" : "High-priority"} repair: ${m.title}` : `Repair pending: ${m.title}`,
+      body: `${m.propertyName} · ${m.status === "open" ? "Open" : "In progress"} ${age === 0 ? "since today" : `for ${age} day${age === 1 ? "" : "s"}`}.`,
+      link: `/maintenance/${m.id}/edit`,
+      propertyId: m.propertyId,
+      maintenanceId: m.id,
+    });
+  }
+
+  return out;
+}
+
+export type StoredNotification = {
+  key: string;
+  title: string;
+  body: string;
+  resolvedAt: Date | null;
+};
+
+export type SyncPlan = {
+  create: NotificationSpec[];
+  resolveKeys: string[];
+  reopen: NotificationSpec[];
+  update: NotificationSpec[];
+};
+
+/**
+ * Reconciles stored notifications with the desired set. `existing` must contain every stored
+ * notification that is unresolved, plus any stored notification whose key is desired.
+ */
+export function planSync(existing: StoredNotification[], desired: NotificationSpec[]): SyncPlan {
+  const stored = new Map(existing.map((n) => [n.key, n]));
+  const desiredKeys = new Set<string>();
+  const plan: SyncPlan = { create: [], resolveKeys: [], reopen: [], update: [] };
+
+  for (const d of desired) {
+    if (desiredKeys.has(d.key)) continue; // defensive: never plan the same key twice
+    desiredKeys.add(d.key);
+    const s = stored.get(d.key);
+    if (!s) plan.create.push(d);
+    else if (s.resolvedAt) plan.reopen.push(d);
+    else if (s.title !== d.title || s.body !== d.body) plan.update.push(d);
+  }
+  for (const s of existing) {
+    if (!s.resolvedAt && !desiredKeys.has(s.key)) plan.resolveKeys.push(s.key);
+  }
+  return plan;
+}
+
+/** Unread = not read and not resolved (resolved items drop out of the count). */
+export function isUnread(n: { readAt: Date | string | null; resolvedAt: Date | string | null }): boolean {
+  return !n.readAt && !n.resolvedAt;
+}
+
+export function unreadCount(list: { readAt: Date | string | null; resolvedAt: Date | string | null }[]): number {
+  return list.filter(isUnread).length;
+}
+
+/** Throttle check for the background sync. */
+export function syncDue(lastSyncedAt: Date | null | undefined, now: Date, intervalMs = SYNC_INTERVAL_MS): boolean {
+  return !lastSyncedAt || now.getTime() - lastSyncedAt.getTime() >= intervalMs;
+}

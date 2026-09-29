@@ -1,0 +1,30 @@
+import { NextResponse, type NextRequest } from "next/server";
+import { SESSION_COOKIE, verifySession } from "@/lib/session";
+
+/**
+ * First line of defence: every request except the login page and static assets needs a
+ * valid session cookie. Pages redirect to /login; API routes get 401.
+ * (Pages, route handlers and server actions also re-check via requireUser().)
+ */
+export async function middleware(req: NextRequest) {
+  const { pathname, search } = req.nextUrl;
+  // The login page itself decides (with a DB check) whether to bounce a signed-in user.
+  if (pathname === "/login") return NextResponse.next();
+
+  const session = await verifySession(req.cookies.get(SESSION_COOKIE)?.value);
+
+  if (!session) {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const url = new URL("/login", req.url);
+    if (pathname !== "/" && req.method === "GET") url.searchParams.set("next", pathname + search);
+    return NextResponse.redirect(url);
+  }
+
+  return NextResponse.next();
+}
+
+export const config = {
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|robots.txt).*)"],
+};
