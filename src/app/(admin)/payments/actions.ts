@@ -10,6 +10,7 @@ import { formatMonth, payableMonths } from "@/lib/rent";
 import { parseForm, paymentSchema, type ActionState } from "@/lib/validation";
 import { Payment } from "@/models/Payment";
 import { Rental } from "@/models/Rental";
+import { ensureReceiptNo } from "@/lib/receipt-store";
 
 /** Records a rent payment. Payments are append-only (never hard-deleted). */
 export async function createPayment(_prev: ActionState, fd: FormData): Promise<ActionState> {
@@ -34,7 +35,9 @@ export async function createPayment(_prev: ActionState, fd: FormData): Promise<A
     return { ok: false, message: "Please fix the highlighted fields.", fieldErrors: { forMonth: [msg] }, values };
   }
 
-  await Payment.create({ rental: rentalId, forMonth, paidOn: dateFromISO(paidOn), ...rest });
+  const payment = await Payment.create({ rental: rentalId, forMonth, paidOn: dateFromISO(paidOn), ...rest });
+  // Number its rent receipt now (F1); if this fails, the receipt page numbers it on first open.
+  await ensureReceiptNo(payment._id).catch((err) => console.error("[receipts] numbering failed:", err));
 
   // Resolve (or update) this rental's rent notifications right away.
   await syncNotificationsSafe({ scope: { rentalIds: [rentalId] } });

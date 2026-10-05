@@ -11,7 +11,7 @@ export type SessionPayload = { sub: string; name: string; email: string };
 
 const DEV_SECRET = "rentee-dev-secret-do-not-use-in-production-0123456789";
 
-function secretKey(): Uint8Array {
+export function secretKey(): Uint8Array {
   const secret = process.env.AUTH_SECRET;
   if (!secret) {
     if (process.env.NODE_ENV === "production") {

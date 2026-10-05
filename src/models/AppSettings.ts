@@ -22,6 +22,14 @@ const appSettingsSchema = new Schema(
     defaultElectricityRate: { type: Number, min: 0, default: null },
     /** Last notification sync (throttle: at most once per 5 minutes). */
     notificationsSyncedAt: { type: Date, default: null },
+    /** Landlord details printed on rent receipts (F1); empty = not shown. */
+    landlordName: { type: String, default: "" },
+    landlordAddress: { type: String, default: "" },
+    landlordPhone: { type: String, default: "" },
+    landlordPan: { type: String, default: "" },
+    /** UPI pay links (F10): VPA and payee name; empty UPI ID = pay links off. */
+    upiId: { type: String, default: "" },
+    upiPayeeName: { type: String, default: "" },
   },
   { timestamps: true },
 );

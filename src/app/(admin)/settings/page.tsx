@@ -11,6 +11,7 @@ import { addMonths, localToday, monthOf } from "@/lib/rent";
 import {
   DEFAULT_COUNTRY_CODE,
   DEFAULT_REMINDER_TEMPLATE,
+  DEFAULT_REMINDER_TEMPLATE_UPI,
   REMINDER_PLACEHOLDERS,
   renderTemplate,
   reminderVars,
@@ -19,6 +20,9 @@ import { User } from "@/models/User";
 import { ActionForm, CheckboxField, ConfirmAction, MoneyField, SubmitButton, TextAreaField, TextField } from "@/components/form";
 import { EnableDesktopButton } from "@/components/notifications";
 import { AgreementSettingsCard } from "@/components/agreement-settings-card";
+import { LandlordSettingsCard, UpiSettingsCard } from "@/components/receipt-settings-cards";
+import { appBaseUrl } from "@/lib/app-url";
+import { getUpiSettings } from "@/lib/landlord-settings";
 import { Badge, Card, DetailList, PageHeader } from "@/components/ui";
 import {
   changePassword,
@@ -40,6 +44,7 @@ export default async function SettingsPage() {
     getNotificationSettings(),
     getDefaultElectricityRate(),
   ]);
+  const samplePayLink = (await getUpiSettings()).enabled ? `${await appBaseUrl()}/p/…` : "";
   const sampleMonth = addMonths(monthOf(localToday()), -1);
   const preview = renderTemplate(
     template,
@@ -52,9 +57,10 @@ export default async function SettingsPage() {
       },
       "Asha Menon",
       "Palm Grove Villa",
+      samplePayLink,
     ),
   );
-  const isDefault = template === DEFAULT_REMINDER_TEMPLATE;
+  const isDefault = template === DEFAULT_REMINDER_TEMPLATE || template === DEFAULT_REMINDER_TEMPLATE_UPI;
 
   return (
     <>
@@ -207,6 +213,10 @@ export default async function SettingsPage() {
         </Card>
 
         <AgreementSettingsCard />
+
+        <LandlordSettingsCard />
+
+        <UpiSettingsCard />
 
         <Card title="Preferences" description="Configured through environment variables.">
           <DetailList
