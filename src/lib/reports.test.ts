@@ -5,7 +5,7 @@
 import ExcelJS from "exceljs";
 import { PDFDocument } from "pdf-lib";
 import { describe, expect, it } from "vitest";
-import { ledgerPdf, fySummaryPdf, pdfSafe } from "./report-pdf";
+import { ledgerPdf, fySummaryPdf, pdfMoney } from "./report-pdf";
 import { attachmentHeader, collectionsByMonth, collectionsReport, fileSlug, fySummary, tenantLedger, type ScheduledRental } from "./reports";
 import { collectionsXlsx, fySummaryXlsx, ledgerXlsx } from "./reports-xlsx";
 import { rentSchedule, type RentalLike } from "./rent";
@@ -160,10 +160,8 @@ describe("helpers", () => {
     expect(attachmentHeader("ledger-é.pdf")).toBe(`attachment; filename="ledger-_.pdf"; filename*=UTF-8''ledger-%C3%A9.pdf`);
   });
 
-  it("pdfSafe keeps Latin-1, maps ₹ and drops what Helvetica cannot draw", () => {
-    expect(pdfSafe("₹1,20,000.00")).toBe("Rs.1,20,000.00");
-    expect(pdfSafe("José – Café · 1 Apr")).toBe("José – Café · 1 Apr");
-    expect(pdfSafe("राम\nŁódź")).toBe("??? ?ódz");
+  it("pdfMoney keeps the ₹ sign (report PDFs use the Unicode fonts)", () => {
+    expect(pdfMoney(R(120000))).toContain("₹");
   });
 });
 

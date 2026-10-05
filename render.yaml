@@ -25,3 +25,5 @@ services:
         value: "91"
       - key: TZ # "today" for due/overdue dates follows this timezone
         value: Asia/Kolkata
+      - key: APP_URL
+        sync: false # your public URL, e.g. https://rentee.onrender.com (used in receipt and pay links)
