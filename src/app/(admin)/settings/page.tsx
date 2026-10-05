@@ -18,6 +18,7 @@ import {
 import { User } from "@/models/User";
 import { ActionForm, CheckboxField, ConfirmAction, MoneyField, SubmitButton, TextAreaField, TextField } from "@/components/form";
 import { EnableDesktopButton } from "@/components/notifications";
+import { AgreementSettingsCard } from "@/components/agreement-settings-card";
 import { Badge, Card, DetailList, PageHeader } from "@/components/ui";
 import {
   changePassword,
@@ -204,6 +205,8 @@ export default async function SettingsPage() {
             </div>
           </ActionForm>
         </Card>
+
+        <AgreementSettingsCard />
 
         <Card title="Preferences" description="Configured through environment variables.">
           <DetailList

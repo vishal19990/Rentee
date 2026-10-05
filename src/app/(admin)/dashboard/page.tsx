@@ -12,6 +12,7 @@ import { Payment } from "@/models/Payment";
 import { Property } from "@/models/Property";
 import { ButtonLink, Card, EmptyState, PageHeader, StatCard, StatusBadge } from "@/components/ui";
 import { WhatsAppReminderButton } from "@/components/whatsapp-button";
+import { AgreementsExpiringCard } from "@/components/agreements-expiring-card";
 import {
   IconAlert,
   IconCalendar,
@@ -253,6 +254,8 @@ export default async function DashboardPage() {
             </ul>
           )}
         </Card>
+
+        <AgreementsExpiringCard rentals={rentals} today={today} />
       </div>
     </>
   );

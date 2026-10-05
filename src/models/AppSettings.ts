@@ -14,6 +14,8 @@ const appSettingsSchema = new Schema(
     dueSoonDays: { type: Number, default: 3, min: 0, max: 30 },
     moveOutDays: { type: Number, default: 7, min: 1, max: 60 },
     maintenanceDays: { type: Number, default: 7, min: 1, max: 90 },
+    /** Agreement renewal reminder: days before an agreement's end date (F8). */
+    agreementExpiryDays: { type: Number, default: 30, min: 1, max: 120 },
     /** Whether browser desktop notifications are allowed (each browser still needs permission). */
     desktopNotifications: { type: Boolean, default: true },
     /** Default electricity rate per unit (minor units) when a property has none; null = not set. */

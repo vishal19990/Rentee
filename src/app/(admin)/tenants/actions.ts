@@ -8,6 +8,8 @@ import { connectDB } from "@/lib/db";
 import { parseForm, tenantSchema, type ActionState } from "@/lib/validation";
 import { Rental } from "@/models/Rental";
 import { Tenant } from "@/models/Tenant";
+import { TenantDocument } from "@/models/TenantDocument";
+import { deleteDocumentFile } from "@/lib/document-store";
 
 const NOT_FOUND: ActionState = { ok: false, message: "Tenant not found." };
 
@@ -60,6 +62,10 @@ export async function deleteTenant(id: string): Promise<ActionState> {
   }
   const res = await Tenant.deleteOne({ _id });
   if (res.deletedCount === 0) return NOT_FOUND;
+  // F7: a deleted tenant's documents (records + GridFS files) go with them.
+  const docs = await TenantDocument.find({ tenant: _id }).select("file").lean();
+  await TenantDocument.deleteMany({ tenant: _id });
+  await Promise.all(docs.map((d) => deleteDocumentFile(d.file)));
   revalidatePath("/tenants");
   redirect("/tenants");
 }

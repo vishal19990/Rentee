@@ -14,6 +14,8 @@ const TYPE_LABEL: Record<string, string> = {
   rent_due_soon: "Rent due soon",
   move_out_soon: "Moving out",
   maintenance_pending: "Maintenance",
+  agreement_expiring: "Agreement ending",
+  agreement_expired: "Agreement expired",
 };
 
 export function NotificationPageActions() {
