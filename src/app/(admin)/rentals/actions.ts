@@ -9,7 +9,11 @@ import { syncNotificationsSafe } from "@/lib/notification-sync";
 import { dateFromISO } from "@/lib/format";
 import { localToday, monthOf, rentalStatus, toISODate } from "@/lib/rent";
 import { moveOutSchema, parseForm, rentalSchema, rentalUpdateSchema, type ActionState } from "@/lib/validation";
+import { ensureDepositLedger } from "@/lib/deposit-store";
+import { Charge } from "@/models/Charge";
+import { DepositEntry } from "@/models/DepositEntry";
 import { Payment } from "@/models/Payment";
+import { RentChange } from "@/models/RentChange";
 import { Property } from "@/models/Property";
 import { Rental } from "@/models/Rental";
 import { Tenant } from "@/models/Tenant";
@@ -78,6 +82,8 @@ export async function createRental(_prev: ActionState, fd: FormData): Promise<Ac
     if (isDuplicateKey(err)) return fail("propertyId", ACTIVE_EXISTS);
     throw err;
   }
+  // Deposit > 0 opens the deposit ledger with a "received" entry.
+  await ensureDepositLedger(id);
   await syncNotificationsSafe({ scope: { rentalIds: [id] } });
   revalidateRentalViews(id, propertyId, tenantId);
   redirect(`/rentals/${id}`);
@@ -88,6 +94,13 @@ async function paymentsOutside(rentalId: unknown, moveInDate: string, moveOutDat
   const or: Record<string, unknown>[] = [{ forMonth: { $lt: monthOf(moveInDate) } }];
   if (moveOutDate) or.push({ forMonth: { $gt: monthOf(moveOutDate) } });
   return Payment.exists({ rental: rentalId, $or: or });
+}
+
+/** Charges must stay inside the rental's months too. */
+async function chargesOutside(rentalId: unknown, moveInDate: string, moveOutDate: string | null) {
+  const or: Record<string, unknown>[] = [{ month: { $lt: monthOf(moveInDate) } }];
+  if (moveOutDate) or.push({ month: { $gt: monthOf(moveOutDate) } });
+  return Charge.exists({ rental: rentalId, $or: or });
 }
 
 export async function updateRental(id: string, _prev: ActionState, fd: FormData): Promise<ActionState> {
@@ -107,6 +120,13 @@ export async function updateRental(id: string, _prev: ActionState, fd: FormData)
   if (await paymentsOutside(_id, moveInDate, moveOutDate)) {
     const msg = "Payments are recorded for months outside these dates";
     const field = moveOutDate && (await Payment.exists({ rental: _id, forMonth: { $gt: monthOf(moveOutDate) } }))
+      ? "moveOutDate"
+      : "moveInDate";
+    return { ok: false, message: msg, fieldErrors: { [field]: [msg] }, values };
+  }
+  if (await chargesOutside(_id, moveInDate, moveOutDate)) {
+    const msg = "Charges are recorded for months outside these dates. Remove them first.";
+    const field = moveOutDate && (await Charge.exists({ rental: _id, month: { $gt: monthOf(moveOutDate) } }))
       ? "moveOutDate"
       : "moveInDate";
     return { ok: false, message: msg, fieldErrors: { [field]: [msg] }, values };
@@ -134,6 +154,8 @@ export async function updateRental(id: string, _prev: ActionState, fd: FormData)
     if (isDuplicateKey(err)) return { ok: false, message: ACTIVE_EXISTS, fieldErrors: { moveOutDate: [ACTIVE_EXISTS] }, values };
     throw err;
   }
+  // A deposit entered for the first time opens the ledger; later changes are ledger entries.
+  await ensureDepositLedger(_id);
   await syncNotificationsSafe({ scope: { rentalIds: [id] } });
   revalidateRentalViews(id, String(rental.property), String(rental.tenant));
   redirect(`/rentals/${id}`);
@@ -162,6 +184,10 @@ export async function moveOutRental(id: string, _prev: ActionState, fd: FormData
     const msg = "Payments are recorded for months after this date";
     return { ok: false, fieldErrors: { moveOutDate: [msg] }, values: parsed.values };
   }
+  if (await Charge.exists({ rental: _id, month: { $gt: monthOf(moveOutDate) } })) {
+    const msg = "Charges are recorded for months after this date";
+    return { ok: false, fieldErrors: { moveOutDate: [msg] }, values: parsed.values };
+  }
 
   const status = storedStatus(moveOutDate);
   await Rental.updateOne({ _id }, { moveOutDate: dateFromISO(moveOutDate), status });
@@ -169,7 +195,9 @@ export async function moveOutRental(id: string, _prev: ActionState, fd: FormData
   revalidateRentalViews(id, String(rental.property), String(rental.tenant));
   return {
     ok: true,
-    message: status === "moved_out" ? "Move-out recorded. The property is now vacant." : "Move-out scheduled.",
+    message:
+      (status === "moved_out" ? "Move-out recorded. The property is now vacant." : "Move-out scheduled.") +
+      " Settle the security deposit (deductions, refund) in the Deposit card.",
   };
 }
 
@@ -184,8 +212,20 @@ export async function deleteRental(id: string): Promise<ActionState> {
       message: "Payments are recorded against this rental, so it can't be deleted. Record a move-out instead.",
     };
   }
+  if (await DepositEntry.exists({ rental: _id, source: "manual" })) {
+    return {
+      ok: false,
+      message: "Deposit entries are recorded against this rental, so it can't be deleted. Record a move-out instead.",
+    };
+  }
   const rental = await Rental.findByIdAndDelete(_id).lean();
   if (!rental) return NOT_FOUND;
+  // A rental deleted by mistake never really happened: drop its derived records.
+  await Promise.all([
+    DepositEntry.deleteMany({ rental: _id, source: "initial" }),
+    Charge.deleteMany({ rental: _id }),
+    RentChange.deleteMany({ rental: _id }),
+  ]);
   await syncNotificationsSafe({ scope: { rentalIds: [id] } });
   revalidateRentalViews(undefined, String(rental.property), String(rental.tenant));
   redirect("/rentals");

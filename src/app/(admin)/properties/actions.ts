@@ -9,6 +9,7 @@ import { connectDB } from "@/lib/db";
 import { syncNotificationsSafe } from "@/lib/notification-sync";
 import { deletePhoto, savePhoto } from "@/lib/photo-store";
 import { IMAGE_TYPES, parseForm, propertySchema, validateImage, type ActionState } from "@/lib/validation";
+import { Expense } from "@/models/Expense";
 import { Rental } from "@/models/Rental";
 import { Maintenance } from "@/models/Maintenance";
 import { Property } from "@/models/Property";
@@ -61,6 +62,9 @@ export async function deleteProperty(id: string): Promise<ActionState> {
   await connectDB();
   if (await Rental.exists({ property: _id })) {
     return { ok: false, message: "This property has rentals, so it can't be deleted. Archive it instead." };
+  }
+  if (await Expense.exists({ property: _id })) {
+    return { ok: false, message: "This property has expenses, so it can't be deleted. Archive it instead." };
   }
   const property = await Property.findByIdAndDelete(_id).lean();
   if (!property) return NOT_FOUND;

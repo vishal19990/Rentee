@@ -3,15 +3,21 @@ import { Types, isValidObjectId } from "mongoose";
 import { connectDB } from "./db";
 import { dateFromISO } from "./format";
 import {
+  currentRent,
   localToday,
   rentSchedule,
   rentalStatus,
   summarize,
   toISODate,
+  upcomingRentChange,
+  type ChargeLike,
+  type RentChangeLike,
   type RentMonth,
   type RentSummary,
 } from "./rent";
+import { Charge } from "@/models/Charge";
 import { Payment } from "@/models/Payment";
+import { RentChange } from "@/models/RentChange";
 import { Property } from "@/models/Property";
 import { Rental } from "@/models/Rental";
 import { Tenant } from "@/models/Tenant";
@@ -44,7 +50,16 @@ export type RentalRow = {
   tenantPhone: string;
   moveInDate: string;
   moveOutDate: string | null;
+  /** Original rent agreed at move-in (stored on the rental, never overwritten). */
   monthlyRent: number;
+  /** Rent in force this month (after rent changes). Use this for display. */
+  currentRent: number;
+  /** Next scheduled rent change after this month, if any. */
+  nextRentChange: RentChangeLike | null;
+  /** Rent changes, oldest first. */
+  rentChanges: RentChangeLike[];
+  /** Utility / other charges (all months). */
+  charges: ChargeLike[];
   deposit: number;
   dueDay: number;
   status: "active" | "moved_out";
@@ -63,10 +78,13 @@ export async function loadRentals(filter: Record<string, unknown> = {}, today = 
   const rentals = await Rental.find(filter).sort({ status: 1, moveInDate: -1 }).lean();
   if (rentals.length === 0) return [];
 
-  const [properties, tenants, payments] = await Promise.all([
+  const rentalIds = rentals.map((r) => r._id);
+  const [properties, tenants, payments, changes, charges] = await Promise.all([
     Property.find({ _id: { $in: rentals.map((r) => r.property) } }).select("name").lean(),
     Tenant.find({ _id: { $in: rentals.map((r) => r.tenant) } }).select("name phone").lean(),
-    Payment.find({ rental: { $in: rentals.map((r) => r._id) } }).select("rental forMonth amount").lean(),
+    Payment.find({ rental: { $in: rentalIds } }).select("rental forMonth amount").lean(),
+    RentChange.find({ rental: { $in: rentalIds } }).sort({ effectiveMonth: 1 }).select("rental effectiveMonth monthlyRent").lean(),
+    Charge.find({ rental: { $in: rentalIds } }).sort({ month: 1, createdAt: 1 }).select("rental month type amount").lean(),
   ]);
   const propName = new Map(properties.map((p) => [toId(p._id), p.name]));
   const tenantName = new Map(tenants.map((t) => [toId(t._id), t.name]));
@@ -78,8 +96,23 @@ export async function loadRentals(filter: Record<string, unknown> = {}, today = 
     paymentsByRental.get(k)!.push({ forMonth: p.forMonth, amount: p.amount });
   }
 
+  const group = <T extends { rental: unknown }, U>(rows: T[], map: (row: T) => U) => {
+    const out = new Map<string, U[]>();
+    for (const row of rows) {
+      const k = toId(row.rental);
+      if (!out.has(k)) out.set(k, []);
+      out.get(k)!.push(map(row));
+    }
+    return out;
+  };
+  const changesByRental = group(changes, (c) => ({ effectiveMonth: c.effectiveMonth, monthlyRent: c.monthlyRent }));
+  const chargesByRental = group(charges, (c) => ({ month: c.month, type: c.type, amount: c.amount }));
+
   return rentals.map((r) => {
-    const schedule = rentSchedule(r, paymentsByRental.get(toId(r._id)) ?? [], today);
+    const rentChanges = changesByRental.get(toId(r._id)) ?? [];
+    const rentalCharges = chargesByRental.get(toId(r._id)) ?? [];
+    const terms = { ...r, rentChanges, charges: rentalCharges };
+    const schedule = rentSchedule(terms, paymentsByRental.get(toId(r._id)) ?? [], today);
     const status = rentalStatus(r, today);
     return {
       id: toId(r._id),
@@ -91,6 +124,10 @@ export async function loadRentals(filter: Record<string, unknown> = {}, today = 
       moveInDate: toISODate(r.moveInDate),
       moveOutDate: r.moveOutDate ? toISODate(r.moveOutDate) : null,
       monthlyRent: r.monthlyRent,
+      currentRent: currentRent(terms, today),
+      nextRentChange: upcomingRentChange(terms, today),
+      rentChanges,
+      charges: rentalCharges,
       deposit: r.deposit,
       dueDay: r.dueDay,
       status,

@@ -53,7 +53,13 @@ export function FormMessage({ state }: { state: ActionState }) {
   );
 }
 
-function useField(name: string, defaultValue?: string | number | null) {
+/** The latest server action result of the enclosing ActionForm. */
+export function useActionResult(): ActionState {
+  return useContext(FormCtx);
+}
+
+/** Field id, server error and echoed/default value — for custom fields inside an ActionForm. */
+export function useField(name: string, defaultValue?: string | number | null) {
   const state = useContext(FormCtx);
   const id = useId();
   const error = state.fieldErrors?.[name]?.[0];
@@ -61,7 +67,7 @@ function useField(name: string, defaultValue?: string | number | null) {
   return { id, error, value };
 }
 
-function FieldWrap({
+export function FieldWrap({
   id,
   label,
   error,

@@ -81,7 +81,7 @@ export default async function RentalsPage({ searchParams }: { searchParams: Prom
                   <Td className="whitespace-nowrap text-slate-600">
                     {r.moveOutDate ? formatDate(r.moveOutDate) : <span className="text-slate-400">—</span>}
                   </Td>
-                  <Td className="text-right tabular-nums">{formatMoney(r.monthlyRent)}</Td>
+                  <Td className="text-right tabular-nums">{formatMoney(r.currentRent)}</Td>
                   <Td className="text-right tabular-nums">
                     {r.summary.overdueAmount > 0 ? (
                       <span className="font-semibold text-rose-600">{formatMoney(r.summary.overdueAmount)}</span>

@@ -95,7 +95,7 @@ export default async function TenantPage({ params }: { params: Promise<{ id: str
                       <Td className="whitespace-nowrap text-slate-600">
                         {formatStay(l.moveInDate, l.moveOutDate)}
                       </Td>
-                      <Td className="text-right tabular-nums">{formatMoney(l.monthlyRent)}</Td>
+                      <Td className="text-right tabular-nums">{formatMoney(l.currentRent)}</Td>
                       <Td className="text-right tabular-nums">
                         {l.summary.overdueAmount > 0 ? (
                           <span className="font-semibold text-rose-600">{formatMoney(l.summary.overdueAmount)}</span>

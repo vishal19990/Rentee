@@ -43,7 +43,7 @@ export default async function NewPaymentPage({ searchParams }: { searchParams: P
             defaults={{
               rentalId: selected?.id,
               forMonth: nextDue?.month ?? monthOf(today),
-              amount: nextDue?.balance ?? selected?.monthlyRent,
+              amount: nextDue?.balance ?? selected?.currentRent,
               paidOn: today,
             }}
           />

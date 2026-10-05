@@ -13,6 +13,8 @@ const propertySchema = new Schema(
     bathrooms: { type: Number, required: true, min: 0, default: 0 },
     /** Asking rent, integer minor units. Rentals carry their own agreed rent. */
     monthlyRent: { type: Number, required: true, min: 0 },
+    /** Electricity rate per unit (minor units); null = use the Settings default. */
+    electricityRate: { type: Number, min: 0, default: null },
     /** Stored file names under uploads/, served via /api/uploads/[file]. */
     photos: { type: [String], default: [] },
     notes: { type: String, default: "" },
@@ -22,6 +24,10 @@ const propertySchema = new Schema(
 );
 
 export type PropertyDoc = InferSchemaType<typeof propertySchema>;
+
+// This schema gained fields over time; in dev, recompile on hot reload so a running server
+// does not keep a stale cached model that silently drops the new fields.
+if (process.env.NODE_ENV !== "production" && mongoose.models.Property) mongoose.deleteModel("Property");
 
 export const Property: Model<PropertyDoc> =
   (mongoose.models.Property as Model<PropertyDoc>) || mongoose.model<PropertyDoc>("Property", propertySchema);

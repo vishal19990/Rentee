@@ -12,6 +12,7 @@ export type PropertyDefaults = {
   bedrooms?: number;
   bathrooms?: number;
   monthlyRent?: number;
+  electricityRate?: number | null;
   notes?: string;
 };
 
@@ -46,6 +47,13 @@ export function PropertyForm({
           currency={currencySymbol()}
           defaultValue={defaults.monthlyRent !== undefined ? toMajorString(defaults.monthlyRent) : ""}
           hint="Used as the default rent for new rentals."
+        />
+        <MoneyField
+          name="electricityRate"
+          label="Electricity rate per unit (optional)"
+          currency={currencySymbol()}
+          defaultValue={defaults.electricityRate != null ? toMajorString(defaults.electricityRate) : ""}
+          hint="Pre-fills electricity charges. Empty = use the default from Settings."
         />
         <TextAreaField name="notes" label="Notes" defaultValue={defaults.notes} className="sm:col-span-2" rows={4} />
       </div>

@@ -1,5 +1,9 @@
 import { z } from "zod";
+import { CHARGE_TYPES, electricityAmount, meterUnits } from "./charges";
+import { DEPOSIT_KINDS } from "./deposit";
+import { EXPENSE_CATEGORIES } from "./expenses";
 import { parseMoney } from "./money";
+import { formatMonth } from "./rent";
 import { REMINDER_PLACEHOLDERS, unknownPlaceholders } from "./whatsapp";
 
 /* ---------- shared form-state contract (used by server actions and client forms) ---------- */
@@ -124,6 +128,25 @@ export const money = (label: string, { positive = true, optional = false } = {})
       return v;
     });
 
+/** Optional money input: empty -> null (e.g. "use the default"), otherwise >= 0 minor units. */
+export const optionalMoney = (label: string) =>
+  z
+    .string()
+    .optional()
+    .transform((raw, ctx) => {
+      const s = (raw ?? "").trim();
+      if (!s) return null;
+      const v = s.startsWith("-") ? null : parseMoney(s);
+      if (v === null) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${label} must be a valid amount` });
+        return z.NEVER;
+      }
+      return v;
+    });
+
+const monthKey = (message: string) =>
+  z.string({ required_error: message }).regex(/^\d{4}-(0[1-9]|1[0-2])$/, message);
+
 /* ---------- domain schemas ---------- */
 
 export const loginSchema = z.object({
@@ -141,6 +164,7 @@ export const propertySchema = z.object({
   bedrooms: intInRange("Bedrooms", 0, 50),
   bathrooms: intInRange("Bathrooms", 0, 50),
   monthlyRent: money("Monthly rent"),
+  electricityRate: optionalMoney("Electricity rate"),
   notes: optionalText(2000),
 });
 
@@ -213,6 +237,127 @@ export const paymentSchema = z.object({
   note: optionalText(500),
 });
 
+/* ---------- rent changes (F4) ---------- */
+
+/** "Change rent" form. The effective month must fall within the rental's months. */
+export const rentChangeSchema = (bounds: { firstMonth: string; lastMonth: string | null }) =>
+  z
+    .object({
+      effectiveMonth: monthKey("Select the month the new rent starts"),
+      monthlyRent: money("New monthly rent"),
+      note: optionalText(300),
+    })
+    .superRefine((v, ctx) => {
+      if (v.effectiveMonth < bounds.firstMonth) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["effectiveMonth"],
+          message: `Effective month can't be before the move-in month (${formatMonth(bounds.firstMonth)})`,
+        });
+      } else if (bounds.lastMonth && v.effectiveMonth > bounds.lastMonth) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["effectiveMonth"],
+          message: `Effective month can't be after the move-out month (${formatMonth(bounds.lastMonth)})`,
+        });
+      }
+    });
+
+/* ---------- utility & other charges (F5) ---------- */
+
+const meterReading = (label: string) =>
+  z
+    .string()
+    .optional()
+    .transform((raw, ctx) => {
+      const s = (raw ?? "").trim().replace(/,/g, "");
+      if (!s) return null;
+      if (!/^\d+(\.\d{1,2})?$/.test(s) || !Number.isFinite(Number(s))) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${label} must be a number (up to 2 decimals)` });
+        return z.NEVER;
+      }
+      return Number(s);
+    });
+
+/**
+ * A charge for a month. For electricity, meter readings (previous, current) and a rate per
+ * unit may be given: the amount defaults to units × rate but can be overridden.
+ */
+export const chargeSchema = (bounds: { firstMonth: string; lastMonth: string }) =>
+  z
+    .object({
+      month: monthKey("Select the month this charge is for"),
+      type: z.enum(CHARGE_TYPES, { errorMap: () => ({ message: "Select a charge type" }) }),
+      amount: optionalMoney("Amount"),
+      meterPrevious: meterReading("Previous reading"),
+      meterCurrent: meterReading("Current reading"),
+      meterRate: optionalMoney("Rate per unit"),
+      note: optionalText(300),
+    })
+    .transform((v, ctx) => {
+      const issue = (path: string, message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
+      if (v.month < bounds.firstMonth) issue("month", `Month can't be before the move-in month (${formatMonth(bounds.firstMonth)})`);
+      else if (v.month > bounds.lastMonth) issue("month", `Month can't be after ${formatMonth(bounds.lastMonth)}`);
+
+      let meter: { previous: number; current: number; rate: number } | null = null;
+      const anyMeter = v.meterPrevious !== null || v.meterCurrent !== null;
+      if (v.type === "electricity" && anyMeter) {
+        if (v.meterPrevious === null) issue("meterPrevious", "Previous reading is required");
+        if (v.meterCurrent === null) issue("meterCurrent", "Current reading is required");
+        const units = v.meterPrevious !== null && v.meterCurrent !== null ? meterUnits(v.meterPrevious, v.meterCurrent) : null;
+        if (v.meterPrevious !== null && v.meterCurrent !== null && units === null) {
+          issue("meterCurrent", "Current reading can't be less than the previous reading");
+        }
+        if (v.meterRate === null || v.meterRate <= 0) issue("meterRate", "Rate per unit is required");
+        if (units !== null && v.meterRate) meter = { previous: v.meterPrevious!, current: v.meterCurrent!, rate: v.meterRate };
+      }
+
+      let amount = v.amount;
+      if (amount === null && meter) amount = electricityAmount(meter.previous, meter.current, meter.rate);
+      if (amount === null) issue("amount", "Amount is required");
+      else if (amount <= 0) issue("amount", "Amount must be greater than zero");
+      return { month: v.month, type: v.type, amount: amount ?? 0, meter, note: v.note };
+    });
+
+/* ---------- security deposit (F3) ---------- */
+
+export const depositEntrySchema = z
+  .object({
+    kind: z.enum(DEPOSIT_KINDS, { errorMap: () => ({ message: "Select an entry type" }) }),
+    amount: money("Amount"),
+    date: isoDate("Date"),
+    reason: optionalText(300),
+  })
+  .refine((v) => v.kind !== "deduction" || v.reason.length > 0, {
+    message: "Give a reason for the deduction",
+    path: ["reason"],
+  });
+
+/* ---------- expenses (F2) ---------- */
+
+const optionalObjectId = (label: string) =>
+  z
+    .string()
+    .optional()
+    .transform((v) => (v ?? "").trim())
+    .pipe(z.union([z.literal("").transform(() => null), objectId(label)]));
+
+export const expenseSchema = z.object({
+  /** Empty = general expense (not tied to a property). */
+  propertyId: optionalObjectId("Property"),
+  category: z.enum(EXPENSE_CATEGORIES, { errorMap: () => ({ message: "Select a category" }) }),
+  amount: money("Amount"),
+  date: isoDate("Date"),
+  vendor: optionalText(120),
+  note: optionalText(1000),
+  /** Set when the expense was logged from a maintenance request. */
+  maintenanceId: optionalObjectId("Maintenance request"),
+});
+
+export const electricitySettingsSchema = z.object({
+  defaultElectricityRate: optionalMoney("Default electricity rate"),
+});
+
 export const MAINTENANCE_PRIORITIES = ["low", "medium", "high", "urgent"] as const;
 export const MAINTENANCE_STATUSES = ["open", "in_progress", "done"] as const;
 
@@ -276,6 +421,34 @@ export const notificationSettingsSchema = z.object({
 /* ---------- uploads ---------- */
 
 export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+
+/** Attachments (expense bills now; tenant documents later): PDF or image, ≤ 10 MB. */
+export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+
+export const ATTACHMENT_TYPES: Record<string, string> = {
+  "application/pdf": "pdf",
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+};
+
+/**
+ * Validates an uploaded attachment by declared type, size and file signature (magic bytes),
+ * so e.g. an .exe renamed to .pdf is rejected. Pass at least the first 12 bytes as `head`.
+ */
+export function validateAttachment(file: { type: string; size: number } | null | undefined, head?: Uint8Array): string | null {
+  if (!file || file.size === 0) return "Choose a file to upload";
+  if (!ATTACHMENT_TYPES[file.type]) return "Only PDF, JPG, PNG or WEBP files are allowed";
+  if (file.size > MAX_ATTACHMENT_BYTES) return "File must be 10 MB or smaller";
+  if (head) {
+    const ok =
+      file.type === "application/pdf"
+        ? [0x25, 0x50, 0x44, 0x46, 0x2d].every((v, i) => head[i] === v) // "%PDF-"
+        : matchesSignature(file.type, head);
+    if (!ok) return "File content doesn't match its type";
+  }
+  return null;
+}
 
 export const IMAGE_TYPES: Record<string, string> = {
   "image/jpeg": "jpg",

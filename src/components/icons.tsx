@@ -198,3 +198,29 @@ export const IconBell = (p: IconProps) => (
     <path d="M10.3 21a1.9 1.9 0 0 0 3.4 0" />
   </Icon>
 );
+
+export const IconBolt = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M13 2 4 14h7l-1 8 9-12h-7z" />
+  </Icon>
+);
+
+export const IconReceipt = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M5 3h14v18l-3-2-2 2-2-2-2 2-2-2-3 2z" />
+    <path d="M9 8h6M9 12h6" />
+  </Icon>
+);
+
+export const IconChart = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M3 3v18h18" />
+    <path d="M8 17v-5M13 17V8M18 17v-9" />
+  </Icon>
+);
+
+export const IconPaperclip = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="m21 11-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 7" />
+  </Icon>
+);

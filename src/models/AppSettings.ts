@@ -16,6 +16,8 @@ const appSettingsSchema = new Schema(
     maintenanceDays: { type: Number, default: 7, min: 1, max: 90 },
     /** Whether browser desktop notifications are allowed (each browser still needs permission). */
     desktopNotifications: { type: Boolean, default: true },
+    /** Default electricity rate per unit (minor units) when a property has none; null = not set. */
+    defaultElectricityRate: { type: Number, min: 0, default: null },
     /** Last notification sync (throttle: at most once per 5 minutes). */
     notificationsSyncedAt: { type: Date, default: null },
   },

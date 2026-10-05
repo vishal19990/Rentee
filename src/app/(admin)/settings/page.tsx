@@ -3,9 +3,10 @@ import { requireUser } from "@/lib/auth";
 import { toId } from "@/lib/data";
 import { connectDB } from "@/lib/db";
 import { formatDate } from "@/lib/format";
-import { CURRENCY, LOCALE, formatMoney } from "@/lib/money";
+import { CURRENCY, LOCALE, currencySymbol, formatMoney, toMajorString } from "@/lib/money";
 import { getNotificationSettings } from "@/lib/notification-sync";
 import { getReminderTemplate } from "@/lib/reminders";
+import { getDefaultElectricityRate } from "@/lib/settings";
 import { addMonths, localToday, monthOf } from "@/lib/rent";
 import {
   DEFAULT_COUNTRY_CODE,
@@ -15,20 +16,28 @@ import {
   reminderVars,
 } from "@/lib/whatsapp";
 import { User } from "@/models/User";
-import { ActionForm, CheckboxField, ConfirmAction, SubmitButton, TextAreaField, TextField } from "@/components/form";
+import { ActionForm, CheckboxField, ConfirmAction, MoneyField, SubmitButton, TextAreaField, TextField } from "@/components/form";
 import { EnableDesktopButton } from "@/components/notifications";
 import { Badge, Card, DetailList, PageHeader } from "@/components/ui";
-import { changePassword, createAdmin, resetReminderTemplate, saveNotificationSettings, saveReminderTemplate } from "./actions";
+import {
+  changePassword,
+  createAdmin,
+  resetReminderTemplate,
+  saveElectricitySettings,
+  saveNotificationSettings,
+  saveReminderTemplate,
+} from "./actions";
 
 export const metadata: Metadata = { title: "Settings" };
 
 export default async function SettingsPage() {
   const me = await requireUser();
   await connectDB();
-  const [admins, template, notif] = await Promise.all([
+  const [admins, template, notif, electricityRate] = await Promise.all([
     User.find().sort({ createdAt: 1 }).select("name email createdAt").lean(),
     getReminderTemplate(),
     getNotificationSettings(),
+    getDefaultElectricityRate(),
   ]);
   const sampleMonth = addMonths(monthOf(localToday()), -1);
   const preview = renderTemplate(
@@ -177,6 +186,21 @@ export default async function SettingsPage() {
             </div>
             <div className="flex justify-end">
               <SubmitButton>Save notification settings</SubmitButton>
+            </div>
+          </ActionForm>
+        </Card>
+
+        <Card title="Utility charges" description="Default electricity rate for the charge calculator on rental pages.">
+          <ActionForm action={saveElectricitySettings} className="space-y-4">
+            <MoneyField
+              name="defaultElectricityRate"
+              label="Electricity rate per unit"
+              currency={currencySymbol()}
+              defaultValue={electricityRate != null ? toMajorString(electricityRate) : ""}
+              hint="Used when a property has no rate of its own. Leave empty to enter the rate on each bill."
+            />
+            <div className="flex justify-end">
+              <SubmitButton>Save rate</SubmitButton>
             </div>
           </ActionForm>
         </Card>

@@ -84,7 +84,7 @@ export default async function PropertyPage({ params }: { params: Promise<{ id: s
                 <DetailList
                   items={[
                     { label: "Tenant", value: <Link className="link" href={`/tenants/${active.tenantId}`}>{active.tenantName}</Link> },
-                    { label: "Rent", value: `${formatMoney(active.monthlyRent)} / month, due day ${active.dueDay}` },
+                    { label: "Rent", value: `${formatMoney(active.currentRent)} / month, due day ${active.dueDay}` },
                     { label: "Moved in", value: formatDate(active.moveInDate) },
                     {
                       label: "Move-out",
@@ -182,7 +182,7 @@ export default async function PropertyPage({ params }: { params: Promise<{ id: s
                       <Td className="whitespace-nowrap text-slate-600">
                         {formatStay(l.moveInDate, l.moveOutDate)}
                       </Td>
-                      <Td className="text-right tabular-nums">{formatMoney(l.monthlyRent)}</Td>
+                      <Td className="text-right tabular-nums">{formatMoney(l.currentRent)}</Td>
                       <Td>
                         <StatusBadge status={rentalBadge(l)} />
                       </Td>
@@ -200,6 +200,10 @@ export default async function PropertyPage({ params }: { params: Promise<{ id: s
               items={[
                 { label: "Type", value: titleCase(p.type) },
                 { label: "Asking rent", value: formatMoney(p.monthlyRent) },
+                {
+                  label: "Electricity rate",
+                  value: p.electricityRate != null ? `${formatMoney(p.electricityRate)} / unit` : "Settings default",
+                },
                 { label: "Bedrooms", value: String(p.bedrooms) },
                 { label: "Bathrooms", value: String(p.bathrooms) },
               ]}

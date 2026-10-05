@@ -78,9 +78,22 @@ async function main() {
       Payment.deleteMany({}),
       Maintenance.deleteMany({}),
     ]);
-    // Collections without a model import here: notifications, reminders, settings and photos (GridFS).
+    // Collections without a model import here: notifications, reminders, settings, rent changes,
+    // charges, deposit ledger, expenses, and GridFS files (photos, expense bills).
     const db = mongoose.connection.db!;
-    for (const name of ["notifications", "reminderlogs", "appsettings", "photos.files", "photos.chunks"]) {
+    for (const name of [
+      "notifications",
+      "reminderlogs",
+      "appsettings",
+      "rentchanges",
+      "charges",
+      "depositentries",
+      "expenses",
+      "photos.files",
+      "photos.chunks",
+      "bills.files",
+      "bills.chunks",
+    ]) {
       await db.collection(name).deleteMany({});
     }
     // Leftover from before month-to-month rentals replaced leases.

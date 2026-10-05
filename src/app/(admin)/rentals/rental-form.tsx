@@ -60,15 +60,21 @@ export function RentalForm({
         )}
         <MoneyField
           name="monthlyRent"
-          label="Monthly rent"
+          label={showMoveOut ? "Original monthly rent" : "Monthly rent"}
           currency={symbol}
           defaultValue={defaults.monthlyRent ? toMajorString(defaults.monthlyRent) : ""}
+          hint={showMoveOut ? "Rent from move-in. For an increase, use “Change rent” on the rental page." : undefined}
         />
         <MoneyField
           name="deposit"
           label="Security deposit"
           currency={symbol}
           defaultValue={defaults.deposit !== undefined ? toMajorString(defaults.deposit) : ""}
+          hint={
+            showMoveOut
+              ? "Agreed deposit at move-in. To record more money received, deductions or a refund, use the Deposit card on the rental page."
+              : "Recorded as received in the deposit ledger."
+          }
         />
         <TextField
           name="dueDay"

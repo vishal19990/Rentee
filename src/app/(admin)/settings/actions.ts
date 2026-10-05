@@ -6,6 +6,7 @@ import { hashPassword, requireUser, verifyPassword } from "@/lib/auth";
 import { syncNotificationsSafe } from "@/lib/notification-sync";
 import {
   adminSchema,
+  electricitySettingsSchema,
   notificationSettingsSchema,
   parseForm,
   passwordChangeSchema,
@@ -83,6 +84,18 @@ function revalidateReminderViews() {
   revalidatePath("/dashboard");
   revalidatePath("/rentals", "layout");
   revalidatePath("/tenants", "layout");
+}
+
+/** Saves the default electricity rate per unit (used when a property has no rate of its own). */
+export async function saveElectricitySettings(_prev: ActionState, fd: FormData): Promise<ActionState> {
+  await requireUser();
+  const parsed = parseForm(electricitySettingsSchema, fd);
+  if (!parsed.success) return parsed.state;
+  await connectDB();
+  await AppSettings.updateOne({ key: APP_SETTINGS_KEY }, { $set: parsed.data }, { upsert: true });
+  revalidatePath("/settings");
+  revalidatePath("/rentals", "layout");
+  return { ok: true, message: "Electricity rate saved." };
 }
 
 /** Saves notification thresholds (N, M, K) and the desktop toggle, then re-syncs notifications. */

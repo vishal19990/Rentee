@@ -5,18 +5,26 @@ import { requireUser } from "@/lib/auth";
 import { asObjectId, loadRentals } from "@/lib/data";
 import { connectDB } from "@/lib/db";
 import { formatDate, formatDateTime, titleCase } from "@/lib/format";
-import { formatMoney } from "@/lib/money";
-import { formatMonth, localToday, monthOf, rentalBadge } from "@/lib/rent";
+import { chargeLabel } from "@/lib/charges";
+import { DEPOSIT_KIND_LABELS } from "@/lib/deposit";
+import { loadDeposit } from "@/lib/deposit-store";
+import { currencySymbol, formatMoney, toMajorString } from "@/lib/money";
+import { addMonths, formatMonth, localToday, monthOf, payableMonths, rentalBadge } from "@/lib/rent";
 import { reminderButtons } from "@/lib/reminders";
+import { getDefaultElectricityRate } from "@/lib/settings";
+import { Charge } from "@/models/Charge";
 import { Payment } from "@/models/Payment";
+import { Property } from "@/models/Property";
+import { RentChange } from "@/models/RentChange";
 import { ReminderLog } from "@/models/ReminderLog";
-import { ActionForm, ConfirmAction, SubmitButton, TextField } from "@/components/form";
+import { ActionForm, ConfirmAction, MoneyField, SelectField, SubmitButton, TextField } from "@/components/form";
 import {
   ButtonLink,
   Card,
   DetailList,
   EmptyState,
   PageHeader,
+  Badge,
   StatCard,
   StatusBadge,
   Table,
@@ -26,10 +34,12 @@ import {
   THead,
 } from "@/components/ui";
 import { WhatsAppReminderButton } from "@/components/whatsapp-button";
-import { IconAlert, IconCalendar, IconCheck, IconPencil, IconTrash, IconWallet } from "@/components/icons";
+import { IconAlert, IconBolt, IconCalendar, IconCheck, IconPencil, IconTrash, IconWallet } from "@/components/icons";
 import { createPayment } from "../../payments/actions";
 import { PaymentForm } from "../../payments/payment-form";
 import { deleteRental, moveOutRental } from "../actions";
+import { addCharge, changeRent, deleteCharge, deleteRentChange, recordDepositEntry } from "../ledger-actions";
+import { ChargeForm } from "./charge-form";
 
 export const metadata: Metadata = { title: "Rental" };
 
@@ -42,12 +52,35 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
   const [r] = await loadRentals({ _id }, today);
   if (!r) notFound();
   await connectDB();
-  const [payments, reminderLogs, reminders] = await Promise.all([
+  const [payments, reminderLogs, reminders, rentChanges, charges, deposit, property, settingsRate] = await Promise.all([
     Payment.find({ rental: _id }).sort({ paidOn: -1, createdAt: -1 }).lean(),
     ReminderLog.find({ rental: _id }).sort({ sentAt: -1 }).limit(5).lean(),
     reminderButtons([r], today),
+    RentChange.find({ rental: _id }).sort({ effectiveMonth: 1 }).lean(),
+    Charge.find({ rental: _id }).sort({ month: -1, createdAt: -1 }).lean(),
+    loadDeposit(_id),
+    Property.findById(r.propertyId).select("electricityRate").lean(),
+    getDefaultElectricityRate(),
   ]);
   const reminder = reminders.get(r.id);
+  const symbol = currencySymbol();
+
+  // Rent changes: the original rent from move-in, then each change. Default: next month.
+  const firstMonth = monthOf(r.moveInDate);
+  const moveOutMonth = r.moveOutDate ? monthOf(r.moveOutDate) : null;
+  const nextMonth = addMonths(monthOf(today), 1);
+  const defaultEffective =
+    moveOutMonth && nextMonth > moveOutMonth ? moveOutMonth : nextMonth < firstMonth ? firstMonth : nextMonth;
+
+  // Charges: month bounds, last electricity reading, default rate (property, else Settings).
+  const chargeBounds = payableMonths(r, today);
+  const lastMeter = charges.find((c) => c.type === "electricity" && c.meter)?.meter ?? null;
+  const defaultRate = typeof property?.electricityRate === "number" ? property.electricityRate : settingsRate;
+  const thisMonth = monthOf(today);
+  const defaultChargeMonth = thisMonth > chargeBounds.last ? chargeBounds.last : thisMonth < firstMonth ? firstMonth : thisMonth;
+
+  // Move-out flow: once a move-out is recorded, the deposit card asks to settle the deposit.
+  const settleDeposit = (r.status === "moved_out" || r.movingOut) && deposit.summary.held > 0;
 
   const schedule = [...r.schedule].reverse();
   const nextDue = r.schedule.find((m) => m.balance > 0);
@@ -82,7 +115,16 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
       />
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatCard label="Monthly rent" value={formatMoney(r.monthlyRent)} hint={`Due on day ${r.dueDay}`} icon={<IconCalendar />} />
+        <StatCard
+          label="Monthly rent"
+          value={formatMoney(r.currentRent)}
+          hint={
+            r.nextRentChange
+              ? `${formatMoney(r.nextRentChange.monthlyRent)} from ${formatMonth(r.nextRentChange.effectiveMonth)} · due day ${r.dueDay}`
+              : `Due on day ${r.dueDay}`
+          }
+          icon={<IconCalendar />}
+        />
         <StatCard
           label="Collected"
           value={formatMoney(r.summary.totalPaid)}
@@ -101,7 +143,7 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
-          <Card title="Rent schedule" description="Computed from payments; newest month first." bodyClassName="p-0">
+          <Card title="Rent schedule" description="Rent plus charges, less payments; newest month first." bodyClassName="p-0">
             {schedule.length === 0 ? (
               <EmptyState
                 compact
@@ -124,7 +166,15 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
                     <tr key={m.month} className={m.status === "overdue" ? "bg-rose-50/40" : undefined}>
                       <Td className="font-medium whitespace-nowrap text-slate-900">{formatMonth(m.month)}</Td>
                       <Td className="whitespace-nowrap text-slate-600">{formatDate(m.dueDate)}</Td>
-                      <Td className="text-right tabular-nums">{formatMoney(m.due)}</Td>
+                      <Td className="text-right tabular-nums">
+                        {formatMoney(m.due)}
+                        {m.charges > 0 && (
+                          <span className="block text-[11px] whitespace-nowrap text-slate-500">
+                            Rent {formatMoney(m.rent)}
+                            {m.chargeItems.map((c) => ` + ${chargeLabel(c.type)} ${formatMoney(c.amount)}`).join("")}
+                          </span>
+                        )}
+                      </Td>
                       <Td className="text-right tabular-nums">{formatMoney(m.paid)}</Td>
                       <Td className="text-right tabular-nums">
                         {m.balance > 0 ? (
@@ -169,6 +219,90 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
               </Table>
             )}
           </Card>
+
+          <Card
+            title="Charges"
+            description="Electricity, water, maintenance and other charges, added to that month's rent."
+            bodyClassName="p-0"
+          >
+            {charges.length === 0 ? (
+              <EmptyState compact icon={<IconBolt />} title="No charges yet" description="Add a utility bill with the form." />
+            ) : (
+              <Table>
+                <THead>
+                  <Th>Month</Th>
+                  <Th>Type</Th>
+                  <Th>Details</Th>
+                  <Th className="text-right">Amount</Th>
+                  <Th className="text-right">
+                    <span className="sr-only">Remove</span>
+                  </Th>
+                </THead>
+                <TBody>
+                  {charges.map((c) => (
+                    <tr key={String(c._id)}>
+                      <Td className="whitespace-nowrap">{formatMonth(c.month)}</Td>
+                      <Td>{chargeLabel(c.type)}</Td>
+                      <Td className="text-xs text-slate-500">
+                        {[
+                          c.meter
+                            ? `${c.meter.previous} → ${c.meter.current} (${Math.round((c.meter.current - c.meter.previous) * 100) / 100} units × ${formatMoney(c.meter.rate)})`
+                            : "",
+                          c.note,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ") || "—"}
+                      </Td>
+                      <Td className="text-right font-medium tabular-nums">{formatMoney(c.amount)}</Td>
+                      <Td className="text-right">
+                        <ConfirmAction
+                          action={deleteCharge.bind(null, id)}
+                          hidden={{ chargeId: String(c._id) }}
+                          label="Remove"
+                          confirmLabel="Remove"
+                          prompt="Remove charge?"
+                          variant="ghost"
+                          icon={<IconTrash className="size-3.5" />}
+                        />
+                      </Td>
+                    </tr>
+                  ))}
+                </TBody>
+              </Table>
+            )}
+          </Card>
+
+          <Card title="Rent history" description="Rent for a month is the latest change effective on or before it." bodyClassName="p-0">
+            <ul className="divide-y divide-slate-100">
+              <li className="px-5 py-3">
+                <p className="text-sm font-medium text-slate-900">{formatMoney(r.monthlyRent)} / month</p>
+                <p className="text-xs text-slate-500">From {formatMonth(firstMonth)} · original rent</p>
+              </li>
+              {rentChanges.map((c) => (
+                <li key={String(c._id)} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
+                  <div className="min-w-0">
+                    <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-slate-900">
+                      {formatMoney(c.monthlyRent)} / month
+                      {c.effectiveMonth > thisMonth && <Badge tone="sky">Scheduled</Badge>}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      From {formatMonth(c.effectiveMonth)}
+                      {c.note ? ` · ${c.note}` : ""}
+                    </p>
+                  </div>
+                  <ConfirmAction
+                    action={deleteRentChange.bind(null, id)}
+                    hidden={{ changeId: String(c._id) }}
+                    label="Remove"
+                    confirmLabel="Remove"
+                    prompt="Remove this rent change?"
+                    variant="ghost"
+                    icon={<IconTrash className="size-3.5" />}
+                  />
+                </li>
+              ))}
+            </ul>
+          </Card>
         </div>
 
         <div className="space-y-6">
@@ -212,9 +346,122 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
               action={createPayment}
               rentalId={id}
               compact
-              defaults={{ forMonth: defaultMonth, amount: nextDue?.balance ?? r.monthlyRent, paidOn: today }}
+              defaults={{ forMonth: defaultMonth, amount: nextDue?.balance ?? r.currentRent, paidOn: today }}
             />
           </Card>
+
+          <Card
+            title="Deposit"
+            description="Security deposit ledger. Entries are permanent; correct a mistake with a new entry."
+            className={settleDeposit ? "ring-2 ring-amber-300" : undefined}
+          >
+            <dl className="grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <dt className="text-xs text-slate-500">Received</dt>
+                <dd className="font-medium tabular-nums">{formatMoney(deposit.summary.received)}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-slate-500">Deductions</dt>
+                <dd className="font-medium tabular-nums">{formatMoney(deposit.summary.deducted)}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-slate-500">Refunded</dt>
+                <dd className="font-medium tabular-nums">{formatMoney(deposit.summary.refunded)}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-slate-500">Held</dt>
+                <dd className="text-base font-semibold text-slate-900 tabular-nums">{formatMoney(deposit.summary.held)}</dd>
+              </div>
+            </dl>
+            {settleDeposit && (
+              <p className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 ring-1 ring-amber-600/20">
+                {r.status === "moved_out" ? "The tenant has moved out." : "The tenant is moving out."} Record any deductions (with a
+                reason), then refund the balance of {formatMoney(deposit.summary.held)}.
+              </p>
+            )}
+            {deposit.entries.length > 0 && (
+              <ul className="mt-4 divide-y divide-slate-100 border-t border-slate-100 text-sm">
+                {deposit.entries.map((e) => (
+                  <li key={e.id} className="flex items-start justify-between gap-3 py-2">
+                    <div className="min-w-0">
+                      <p className="font-medium text-slate-800">{DEPOSIT_KIND_LABELS[e.kind]}</p>
+                      <p className="text-xs break-words text-slate-500">
+                        {formatDate(e.date)}
+                        {e.reason ? ` · ${e.reason}` : ""}
+                      </p>
+                    </div>
+                    <span
+                      className={
+                        e.kind === "received"
+                          ? "shrink-0 font-medium text-emerald-700 tabular-nums"
+                          : "shrink-0 font-medium text-rose-600 tabular-nums"
+                      }
+                    >
+                      {e.kind === "received" ? "+" : "−"}
+                      {formatMoney(e.amount)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <ActionForm action={recordDepositEntry.bind(null, id)} className="mt-4 space-y-4 border-t border-slate-100 pt-4">
+              <div className="grid grid-cols-2 gap-4">
+                <SelectField
+                  name="kind"
+                  label="Entry"
+                  defaultValue={settleDeposit ? "deduction" : "received"}
+                  options={[
+                    { value: "received", label: "Received" },
+                    { value: "deduction", label: "Deduction" },
+                    { value: "refund", label: "Refund" },
+                  ]}
+                />
+                <MoneyField
+                  name="amount"
+                  label="Amount"
+                  currency={symbol}
+                  hint={deposit.summary.held > 0 ? `Held: ${formatMoney(deposit.summary.held)}` : undefined}
+                />
+              </div>
+              <TextField name="date" label="Date" type="date" defaultValue={today} />
+              <TextField name="reason" label="Reason" placeholder="Required for deductions, e.g. repainting" />
+              <SubmitButton className="w-full" variant="secondary">
+                Record deposit entry
+              </SubmitButton>
+            </ActionForm>
+          </Card>
+
+          <Card title="Add charge" description="Billed together with that month's rent.">
+            <ChargeForm
+              action={addCharge.bind(null, id)}
+              defaultMonth={defaultChargeMonth}
+              minMonth={chargeBounds.first}
+              maxMonth={chargeBounds.last}
+              lastReading={lastMeter ? lastMeter.current : null}
+              defaultRate={defaultRate}
+              currency={symbol}
+            />
+          </Card>
+
+          {(r.status === "active" || r.movingOut) && (
+            <Card title="Change rent" description="Applies from the chosen month onwards. Earlier months keep their rent.">
+              <ActionForm action={changeRent.bind(null, id)} className="space-y-4">
+                <TextField
+                  name="effectiveMonth"
+                  label="Effective from"
+                  type="month"
+                  defaultValue={defaultEffective}
+                  min={firstMonth}
+                  max={moveOutMonth ?? undefined}
+                />
+                <MoneyField name="monthlyRent" label="New monthly rent" currency={symbol} defaultValue={toMajorString(r.currentRent)} />
+                <TextField name="note" label="Note (optional)" placeholder="e.g. Annual 5% increase" />
+                <SubmitButton className="w-full" variant="secondary">
+                  Save rent change
+                </SubmitButton>
+              </ActionForm>
+            </Card>
+          )}
 
           {r.status === "active" && (
             <Card
@@ -243,7 +490,8 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
                 { label: "Tenant", value: <Link className="link" href={`/tenants/${r.tenantId}`}>{r.tenantName}</Link> },
                 { label: "Moved in", value: formatDate(r.moveInDate) },
                 { label: r.status === "moved_out" ? "Moved out" : "Move-out", value: r.moveOutDate ? formatDate(r.moveOutDate) : "Not scheduled" },
-                { label: "Deposit", value: formatMoney(r.deposit) },
+                { label: "Original rent", value: formatMoney(r.monthlyRent) },
+                { label: "Deposit agreed", value: formatMoney(r.deposit) },
                 { label: "Due day", value: String(r.dueDay) },
               ]}
             />
@@ -251,7 +499,7 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
 
           <Card title="Danger zone">
             <div className="flex items-center justify-between gap-3">
-              <p className="text-sm text-slate-600">Only possible with no payments.</p>
+              <p className="text-sm text-slate-600">Only possible with no payments or deposit entries.</p>
               <ConfirmAction
                 action={deleteRental.bind(null, id)}
                 label="Delete"

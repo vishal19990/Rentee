@@ -4,17 +4,28 @@
  *
  * For each month from the move-in month through the current month (or through the move-out
  * month, if a move-out date is recorded and earlier):
- *   due = monthlyRent, paid = sum of payments for that `forMonth`,
+ *   rent = latest rent change effective on/before the month, else the rental's original rent,
+ *   charges = sum of utility/other charges for the month,
+ *   due = rent + charges, paid = sum of payments for that `forMonth`,
  *   status = paid if paid >= due; otherwise overdue / partial once past the due day,
  *   upcoming before it.
  * All comparisons use ISO date strings (YYYY-MM-DD) to stay timezone-safe.
  */
 
+/** A rent change: from `effectiveMonth` (YYYY-MM) on, the monthly rent is `monthlyRent`. */
+export type RentChangeLike = { effectiveMonth: string; monthlyRent: number };
+
+/** A utility / other charge billed for a month (added to that month's rent). */
+export type ChargeLike = { month: string; type: string; amount: number };
+
 export type RentalLike = {
   moveInDate: Date | string;
   moveOutDate?: Date | string | null;
+  /** The rental's original (agreed at move-in) monthly rent. */
   monthlyRent: number;
   dueDay: number;
+  rentChanges?: RentChangeLike[];
+  charges?: ChargeLike[];
 };
 
 export type PaymentLike = { forMonth: string; amount: number };
@@ -26,6 +37,13 @@ export type RentalStatus = "active" | "moved_out";
 export type RentMonth = {
   month: string; // YYYY-MM
   dueDate: string; // YYYY-MM-DD
+  /** Rent for this month (after rent changes). */
+  rent: number;
+  /** Total utility / other charges for this month. */
+  charges: number;
+  /** Charge breakdown by type, in insertion order. */
+  chargeItems: { type: string; amount: number }[];
+  /** rent + charges. */
   due: number;
   paid: number;
   balance: number;
@@ -115,6 +133,54 @@ export function payableMonths(rental: RentalLike, today: string = localToday()):
   return { first, last };
 }
 
+/**
+ * Rent for a month: the latest rent change with effectiveMonth <= month, else the original rent.
+ */
+export function rentForMonth(rental: Pick<RentalLike, "monthlyRent" | "rentChanges">, month: string): number {
+  let best: RentChangeLike | null = null;
+  for (const c of rental.rentChanges ?? []) {
+    if (c.effectiveMonth <= month && (!best || c.effectiveMonth > best.effectiveMonth)) best = c;
+  }
+  return best ? best.monthlyRent : rental.monthlyRent;
+}
+
+/** Charges billed for a month: total and per-type breakdown (same types merged). */
+export function chargesForMonth(
+  rental: Pick<RentalLike, "charges">,
+  month: string,
+): { total: number; items: { type: string; amount: number }[] } {
+  const byType = new Map<string, number>();
+  for (const c of rental.charges ?? []) {
+    if (c.month !== month) continue;
+    byType.set(c.type, (byType.get(c.type) ?? 0) + c.amount);
+  }
+  const items = [...byType].map(([type, amount]) => ({ type, amount }));
+  return { total: items.reduce((s, i) => s + i.amount, 0), items };
+}
+
+/** What is due for a month: rent (after changes) + charges. */
+export function dueForMonth(rental: Pick<RentalLike, "monthlyRent" | "rentChanges" | "charges">, month: string): number {
+  return rentForMonth(rental, month) + chargesForMonth(rental, month).total;
+}
+
+/** Rent in force today (reflects rent changes effective this month or earlier). */
+export function currentRent(rental: Pick<RentalLike, "monthlyRent" | "rentChanges">, today: string = localToday()): number {
+  return rentForMonth(rental, monthOf(today));
+}
+
+/** The next rent change that takes effect after the current month, if any. */
+export function upcomingRentChange(
+  rental: Pick<RentalLike, "rentChanges">,
+  today: string = localToday(),
+): RentChangeLike | null {
+  const now = monthOf(today);
+  let best: RentChangeLike | null = null;
+  for (const c of rental.rentChanges ?? []) {
+    if (c.effectiveMonth > now && (!best || c.effectiveMonth < best.effectiveMonth)) best = c;
+  }
+  return best;
+}
+
 export function rentSchedule(
   rental: RentalLike,
   payments: PaymentLike[],
@@ -130,18 +196,32 @@ export function rentSchedule(
   // Rent accrues through the current month, and stops after the move-out month.
   let last = monthOf(today);
   if (moveOutMonth && moveOutMonth < last) last = moveOutMonth;
-  // Show prepaid months too (never past the move-out month).
-  for (const m of paidByMonth.keys()) if (m > last && (!moveOutMonth || m <= moveOutMonth)) last = m;
+  // Show prepaid months (and months already billed charges) too, never past the move-out month.
+  const extra = [...paidByMonth.keys(), ...(rental.charges ?? []).map((c) => c.month)];
+  for (const m of extra) if (m > last && (!moveOutMonth || m <= moveOutMonth)) last = m;
   if (last < firstMonth) return [];
 
   return monthRange(firstMonth, last).map((month) => {
     let dueDate = `${month}-${pad(rental.dueDay)}`;
     if (dueDate < moveIn) dueDate = moveIn; // first month: never due before move-in
-    const due = rental.monthlyRent;
+    const rent = rentForMonth(rental, month);
+    const charges = chargesForMonth(rental, month);
+    const due = rent + charges.total;
     const paid = paidByMonth.get(month) ?? 0;
     const pastDue = today > dueDate;
     const status: MonthStatus = paid >= due ? "paid" : pastDue ? (paid > 0 ? "partial" : "overdue") : "upcoming";
-    return { month, dueDate, due, paid, balance: Math.max(due - paid, 0), status, pastDue };
+    return {
+      month,
+      dueDate,
+      rent,
+      charges: charges.total,
+      chargeItems: charges.items,
+      due,
+      paid,
+      balance: Math.max(due - paid, 0),
+      status,
+      pastDue,
+    };
   });
 }
 

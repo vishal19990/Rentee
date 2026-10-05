@@ -5,7 +5,7 @@
  */
 import { formatDate } from "./format";
 import { formatMoneyShort } from "./money";
-import { addMonths, formatMonth, monthOf, type RentMonth } from "./rent";
+import { addMonths, dueForMonth, formatMonth, monthOf, type ChargeLike, type RentChangeLike, type RentMonth } from "./rent";
 
 export const DEFAULT_COUNTRY_CODE = (process.env.NEXT_PUBLIC_DEFAULT_COUNTRY_CODE || "91").replace(/\D/g, "") || "91";
 
@@ -77,7 +77,10 @@ export type ReminderDue = {
 
 export type ReminderRental = {
   status: "active" | "moved_out";
+  /** Original rent; with rentChanges/charges, next month's due is computed per month. */
   monthlyRent: number;
+  rentChanges?: RentChangeLike[];
+  charges?: ChargeLike[];
   dueDay: number;
   moveOutDate: string | null;
   schedule: RentMonth[];
@@ -117,7 +120,8 @@ export function reminderDue(rental: ReminderRental, today: string): ReminderDue 
   const next = addMonths(lastListed > monthOf(today) ? lastListed : monthOf(today), 1);
   if (rental.moveOutDate && next > monthOf(rental.moveOutDate)) return null;
   const dueDate = `${next}-${String(rental.dueDay).padStart(2, "0")}`;
-  return { kind: "due_soon", months: [{ month: next, dueDate, balance: rental.monthlyRent }], amount: rental.monthlyRent, dueDate };
+  const amount = dueForMonth(rental, next);
+  return { kind: "due_soon", months: [{ month: next, dueDate, balance: amount }], amount, dueDate };
 }
 
 export function reminderVars(due: ReminderDue, tenant: string, property: string): ReminderVars {

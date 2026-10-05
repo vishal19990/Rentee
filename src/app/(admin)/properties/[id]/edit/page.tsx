@@ -34,6 +34,7 @@ export default async function EditPropertyPage({ params }: { params: Promise<{ i
           bedrooms: p.bedrooms,
           bathrooms: p.bathrooms,
           monthlyRent: p.monthlyRent,
+          electricityRate: p.electricityRate ?? null,
           notes: p.notes,
         }}
       />

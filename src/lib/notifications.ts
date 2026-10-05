@@ -11,7 +11,7 @@
  */
 import { formatDate } from "./format";
 import { formatMoney } from "./money";
-import { addMonths, formatMonth, monthOf, type RentMonth } from "./rent";
+import { addMonths, dueForMonth, formatMonth, monthOf, type ChargeLike, type RentChangeLike, type RentMonth } from "./rent";
 
 export const NOTIFICATION_TYPES = ["rent_overdue", "rent_due_soon", "move_out_soon", "maintenance_pending"] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -61,7 +61,10 @@ export type RentalInput = {
   tenantName: string;
   status: "active" | "moved_out";
   moveOutDate: string | null;
+  /** Original rent; next month's due is computed with rentChanges + charges. */
   monthlyRent: number;
+  rentChanges?: RentChangeLike[];
+  charges?: ChargeLike[];
   dueDay: number;
   schedule: RentMonth[];
 };
@@ -135,7 +138,7 @@ export function desiredNotifications(input: {
       const listedNext = r.schedule.find((m) => m.month === next);
       const withinStay = !r.moveOutDate || next <= monthOf(r.moveOutDate);
       if (!listedNext && withinStay) {
-        candidates.push({ month: next, dueDate: `${next}-${pad(r.dueDay)}`, balance: r.monthlyRent });
+        candidates.push({ month: next, dueDate: `${next}-${pad(r.dueDay)}`, balance: dueForMonth(r, next) });
       }
     }
     for (const c of candidates) {

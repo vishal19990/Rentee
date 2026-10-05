@@ -74,8 +74,8 @@ Existing app (read README.md first). Key reuse points:
 ## Tasks & Acceptance
 
 **Execution (batch A):**
-- [ ] models RentChange, Charge, DepositEntry, Expense; `src/lib/rent.ts` per-month due = rent(month) + charges(month); update all consumers -- F2–F5
-- [ ] rental page cards + actions for rent change, charges (electricity calculator), deposit; `/expenses` CRUD; `/reports/profit` -- F2–F5 UI
+- [x] models RentChange, Charge, DepositEntry, Expense; `src/lib/rent.ts` per-month due = rent(month) + charges(month); update all consumers -- F2–F5
+- [x] rental page cards + actions for rent change, charges (electricity calculator), deposit; `/expenses` CRUD; `/reports/profit` -- F2–F5 UI
 **Execution (batch B):**
 - [ ] `src/lib/signed-links.ts`, receipt numbering counter, amount-in-words, PDF generation (pdf-lib or @react-pdf/renderer), `/r/[token]`, receipt buttons on payments/rental pages -- F1
 - [ ] `/reports` hub + xlsx/PDF exports -- F6
@@ -92,6 +92,11 @@ Existing app (read README.md first). Key reuse points:
 - Given a logged-out visitor, when opening any admin URL or document URL, then access is denied; only valid `/r/` and `/p/` tokens render.
 
 ## Implementation Notes
+
+- 2026-10-05 batch A (F2-F5) implemented by subagent. Verified: tsc clean, 113/113 vitest (new src/lib/money-features.test.ts covers every batch-A matrix row), production build (.next-verify, deleted), 59/61 scripted HTTP checks against next start + an ephemeral in-memory mongod on port 27999 (the 2 misses were test regexes expecting "Sep" where en-IN renders "Sept"; data verified correct). User dev DB untouched.
+- Decisions: Rental.monthlyRent stays the original rent (RentalRow.currentRent for display); same effective month replaces a rent change; charges and rent changes are deletable (only payments/deposit entries are append-only); deposit held balance is guarded atomically by a cached Rental.depositHeld counter ($inc with $gte filter), ledger stays the source of truth; legacy rentals get their initial received entry lazily on first view; rentals with manual deposit entries cannot be deleted; properties with expenses cannot be deleted; electricity rate = Property.electricityRate, else Settings.defaultElectricityRate; profit is cash basis (payments by paidOn).
+- Extension points for later batches: lib/fy.ts (receipt FY numbering, FY summary), lib/profit.ts, lib/file-store.ts (add a "documents" bucket), validateAttachment (PDF/JPG/PNG/WEBP <=10 MB, magic bytes), /reports currently redirects to /reports/profit (replace with the hub), RentMonth.rent/charges/chargeItems for receipts and ledgers.
+- next.config.ts: serverActions bodySizeLimit and middlewareClientMaxBodySize raised to 16mb (needs a dev-server restart).
 
 ## Spec Change Log
 

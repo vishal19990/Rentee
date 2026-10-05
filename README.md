@@ -42,7 +42,7 @@ Copy `.env.example` to `.env.local` and adjust:
 | `npm run seed -- --reset` | Wipes all Rentee data, then seeds. Refused on a non-local database unless `--force` is added. **Run this once if your `.data/db` was created before leases became rentals**; the old lease data is not migrated. |
 | `npm run db` | Runs only the local mongod (Ctrl+C to stop) |
 | `npm run build` / `npm start` | Production build / server. `npm start` listens on `0.0.0.0:$PORT` (default 3000) and never starts a local mongod. In production it exits with a clear error if `MONGODB_URI` or `AUTH_SECRET` is missing. |
-| `npm test` | Vitest unit tests (rent schedule, money, validation) |
+| `npm test` | Vitest unit tests (rent schedule, rent changes, charges, deposits, profit, money, validation, notifications, WhatsApp) |
 | `npm run typecheck` | `tsc --noEmit` |
 
 ## How it works
@@ -55,7 +55,7 @@ Copy `.env.example` to `.env.local` and adjust:
   - The dashboard lists rentals **moving out in the next 30 days**. Old `/leases` URLs redirect to `/rentals`.
 - **Occupancy** is never stored. A property is `occupied` when it has an `active` rental. A partial unique index enforces at most one active rental per property.
 - **Rent status** is computed, not stored (`src/lib/rent.ts`). For each month from the move-in month through the current month (or through the move-out month, if earlier):
-  - `due` is the monthly rent and `paid` is the sum of payments for that month.
+  - `due` is that month's rent plus that month's charges (see below), and `paid` is the sum of payments for that month.
   - The month is **paid** once paid ≥ due.
   - Otherwise it is **overdue** (nothing paid) or **partial** (something paid) once the due day has passed, and **upcoming** before that.
   - Payments are append-only: the app has no way to delete them.
@@ -87,6 +87,19 @@ Copy `.env.example` to `.env.local` and adjust:
     - Rent items include the WhatsApp remind button.
   - **Desktop notifications:** open tabs poll `/api/notifications` (login required) every 60 s and show a browser notification for new items. Rentee asks the browser for permission only when you click **Enable desktop notifications**, never on page load. There is no Web Push or service worker, so nothing arrives when no Rentee tab is open.
   - **Settings → Notifications:** set N, M and K, and turn desktop notifications on or off.
+- **Rent changes:** "Change rent" on a rental page sets a new monthly rent from an effective month (default: next month; not before the move-in month, nor after the move-out month). Rent for a month is the latest change effective on or before it, otherwise the rental's original rent, which is never overwritten. Saving the same month again replaces that change; a change can be removed. The rental page shows the rent history, the rent in force now and any scheduled change. The schedule, payment defaults, reminders, notifications and the dashboard all use the per-month rent.
+- **Utility & other charges:** a rental page's **Add charge** form bills electricity, water, maintenance or other charges for a month. For electricity, enter the meter readings: the previous reading is pre-filled from the last bill and the rate per unit from the property (**Edit property → Electricity rate**), falling back to **Settings → Utility charges**. The amount is units × rate, and you can still edit it. A month's due amount is rent + its charges, and payments apply to that total. So overdue/partial status, the WhatsApp `{amount}` and notifications include charges, and the rent schedule shows the breakdown. Charges can be removed. A rental's dates can't be changed to exclude months that have charges.
+- **Security deposit:** each rental has a deposit ledger: **received**, **deduction** (a reason is required) and **refund** entries, shown in the rental page's **Deposit** card with the held balance (received − deductions − refunds).
+  - Creating a rental with a deposit records a "received" entry dated at move-in. Rentals created before the ledger existed get theirs the first time they're opened, so their deposit is unchanged.
+  - The held balance can never go negative. A deduction or refund larger than the balance is refused ("Cannot exceed held deposit ₹20,000"), and the check is atomic, so two refunds at once can't overdraw it.
+  - Entries are permanent: there's no edit or delete. Correct a mistake with a new entry. A rental with manual deposit entries can't be deleted.
+  - After a move-out is recorded, the Deposit card asks you to settle the deposit: record deductions, then refund the balance.
+  - Editing a rental's deposit field only changes the agreed amount shown in its details. Record later money in or out in the Deposit card.
+- **Expenses & profit:** `/expenses` lists what you spend, filtered by financial year, property (or **General**, for expenses not tied to a property) and category. The categories are repair, maintenance, property tax, society charges, electricity, water, insurance, loan interest and other.
+  - An expense can carry a bill: PDF, JPG, PNG or WEBP up to 10 MB. The server checks the type, size and file signature, so a renamed `.exe` is rejected. Bills are stored in GridFS (bucket `bills`) and served only to signed-in admins through `/api/expenses/[id]/bill`. Replacing or removing a bill, or deleting the expense, deletes the file.
+  - A maintenance request's page has **Log cost as expense**, which opens a pre-filled expense form. Each request can be logged once.
+  - A property with expenses can't be deleted; archive it instead.
+  - `/reports/profit` shows income minus expenses for an Indian financial year (1 April – 31 March). The table lists each property, plus a General row, and a total. A monthly chart and table cover all properties or one. Income is rent received, counted by payment date (a payment on 31 Mar 2027 counts in 2026-27, one on 1 Apr 2027 in 2027-28).
 - **Photos:** JPEG/PNG/WebP/GIF up to 5 MB. The server checks the file type, size and file signature. Photos are stored **in MongoDB GridFS** (bucket `photos`), so they survive hosts with an ephemeral disk. They are served only to signed-in admins through `/api/uploads/[file]`. Deleting a photo or property removes its GridFS file. In development only, photos from before GridFS that are still in a local `uploads/` folder keep displaying. They are not migrated; re-upload them if you want them in the database.
 
 ## Deploy to Render
@@ -134,7 +147,7 @@ Then sign in on the Render URL. You can add more admins under **Settings**. Agai
 
 - **Sleep:** a free Render web service spins down after about 15 minutes without traffic. The next request wakes it, which takes up to about a minute.
 - **Notifications:** the notification check (at most every 5 minutes) only runs while someone uses the app, since there's no cron. Desktop notifications only appear while a Rentee tab is open; there's no Web Push. A sleeping service delivers nothing until it is woken.
-- **Storage:** Atlas M0 has 512 MB. Photos (up to 5 MB each, 12 per property) are the main consumer.
+- **Storage:** Atlas M0 has 512 MB. Photos (up to 5 MB each, 12 per property) and expense bills (up to 10 MB each) are the main consumers.
 - **Clock:** "today" (due dates, overdue) uses the server's timezone, which is UTC on Render. To use Indian time, add the environment variable `TZ=Asia/Kolkata`.
 
 ## Project layout
@@ -142,12 +155,15 @@ Then sign in on the Render URL. You can add more admins under **Settings**. Agai
 ```
 src/
   app/login/                 sign-in page + login/logout actions
-  app/(admin)/…              dashboard, properties, tenants, rentals, payments, maintenance, settings
+  app/(admin)/…              dashboard, properties, tenants, rentals, payments, maintenance,
+                             expenses, reports (profit), notifications, settings
   app/api/uploads/[file]/    authenticated photo serving (GridFS)
+  app/api/expenses/[id]/bill authenticated expense bill serving (GridFS)
   app/api/notifications/     notification poll endpoint (bell + desktop notifications)
   components/                app shell (sidebar / mobile drawer), UI primitives, form fields
   lib/                       db, auth, session, money, rent, validation, whatsapp, reminders,
-                             notifications (pure rules), notification-sync, data loaders
+                             notifications (pure rules), notification-sync, data loaders,
+                             fy, charges, deposit (+ deposit-store), expenses, profit, file-store
   models/                    Mongoose schemas
   middleware.ts              route protection
 scripts/local-mongo.mjs      local mongod helper (dev only)

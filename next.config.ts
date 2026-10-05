@@ -13,10 +13,13 @@ const nextConfig: NextConfig = {
   },
   experimental: {
     serverActions: {
-      // Photos are capped at 5 MB by validation; leave headroom so oversize files
-      // reach the action and get a friendly field error instead of a framework error.
-      bodySizeLimit: "8mb",
+      // Photos are capped at 5 MB and attachments (expense bills) at 10 MB by validation; leave
+      // headroom so oversize files reach the action and get a friendly field error instead of a
+      // framework error.
+      bodySizeLimit: "16mb",
     },
+    // Requests pass through middleware (auth); keep its body limit in step with the above.
+    middlewareClientMaxBodySize: "16mb",
   },
 };
 

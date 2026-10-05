@@ -8,11 +8,13 @@ import type { NotificationFeed } from "@/lib/notification-sync";
 import { NotificationBell, NotificationsProvider, useNotifications } from "./notifications";
 import {
   IconBell,
+  IconChart,
   IconDashboard,
   IconFile,
   IconHome,
   IconLogout,
   IconMenu,
+  IconReceipt,
   IconSettings,
   IconUsers,
   IconWallet,
@@ -27,6 +29,8 @@ const NAV = [
   { href: "/rentals", label: "Rentals", icon: IconFile },
   { href: "/payments", label: "Payments", icon: IconWallet },
   { href: "/maintenance", label: "Maintenance", icon: IconWrench },
+  { href: "/expenses", label: "Expenses", icon: IconReceipt },
+  { href: "/reports", label: "Reports", icon: IconChart },
   { href: "/notifications", label: "Notifications", icon: IconBell },
   { href: "/settings", label: "Settings", icon: IconSettings },
 ];
