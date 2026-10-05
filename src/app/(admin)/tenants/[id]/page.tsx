@@ -72,7 +72,7 @@ export default async function TenantPage({ params }: { params: Promise<{ id: str
       />
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
-          <Card title="Rentals" bodyClassName="p-0">
+          <Card title="Rentals" bodyClassName="p-0" actions={rentals.length > 0 ? <ButtonLink href={`/reports/ledger?tenant=${id}`} variant="secondary" size="sm">Download ledger</ButtonLink> : undefined}>
             {rentals.length === 0 ? (
               <EmptyState compact icon={<IconFile />} title="No rentals yet" />
             ) : (
