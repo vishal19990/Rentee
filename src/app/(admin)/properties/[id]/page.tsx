@@ -11,6 +11,7 @@ import { photoUrl } from "@/lib/uploads";
 import { Maintenance } from "@/models/Maintenance";
 import { Property } from "@/models/Property";
 import { ActionForm, ConfirmAction, FileField, SubmitButton } from "@/components/form";
+import { PropertyEnquiriesCard } from "@/components/property-enquiries-card";
 import {
   ButtonLink,
   Card,
@@ -235,6 +236,8 @@ export default async function PropertyPage({ params }: { params: Promise<{ id: s
               </ul>
             )}
           </Card>
+
+          <PropertyEnquiriesCard propertyId={id} />
 
           <Card title="Danger zone">
             <div className="space-y-4">

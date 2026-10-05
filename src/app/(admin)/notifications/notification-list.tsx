@@ -16,6 +16,8 @@ const TYPE_LABEL: Record<string, string> = {
   maintenance_pending: "Maintenance",
   agreement_expiring: "Agreement ending",
   agreement_expired: "Agreement expired",
+  enquiry_follow_up: "Enquiry follow-up",
+  enquiry_visit: "Enquiry visit",
 };
 
 export function NotificationPageActions() {

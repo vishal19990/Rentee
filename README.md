@@ -39,10 +39,10 @@ Copy `.env.example` to `.env.local` and adjust:
 | `npm run dev` | Local mongod (if needed) + Next dev server |
 | `npm run seed` | Admin + demo data (skips demo data if properties exist) |
 | `npm run seed -- --admin-only` | Only the admin account, no demo data (use for production) |
-| `npm run seed -- --reset` | Wipes all Rentee data, then seeds. Refused on a non-local database unless `--force` is added. **Run this once if your `.data/db` was created before leases became rentals**; the old lease data is not migrated. |
+| `npm run seed -- --reset` | Wipes all Rentee data (enquiries included), then seeds. Refused on a non-local database unless `--force` is added. **Run this once if your `.data/db` was created before leases became rentals**; the old lease data is not migrated. |
 | `npm run db` | Runs only the local mongod (Ctrl+C to stop) |
 | `npm run build` / `npm start` | Production build / server. `npm start` listens on `0.0.0.0:$PORT` (default 3000) and never starts a local mongod. In production it exits with a clear error if `MONGODB_URI` or `AUTH_SECRET` is missing. |
-| `npm test` | Vitest unit tests (rent schedule, rent changes, charges, deposits, profit, reports, money, validation, notifications, WhatsApp) |
+| `npm test` | Vitest unit tests (rent schedule, rent changes, charges, deposits, profit, reports, money, validation, notifications, WhatsApp, enquiries) |
 | `npm run typecheck` | `tsc --noEmit` |
 
 ## How it works
@@ -78,6 +78,7 @@ Copy `.env.example` to `.env.local` and adjust:
     - `rent_due_soon` (reminder): N days before a due date with a balance. Default N is 3.
     - `move_out_soon` (reminder): an active rental's move-out within M days. Default M is 7.
     - `maintenance_pending` (alert): an open or in-progress request older than K days (default 7), or urgent/high priority from creation.
+    - `enquiry_follow_up` (reminder): an open enquiry whose follow-up date is today or past. `enquiry_visit` (reminder): an open enquiry's visit is today or within the next 24 hours. Both resolve when the enquiry closes, is marked visited (visit only) or the date changes.
   - **How they're generated:** a sync compares current data with stored notifications. Each notification has a unique key per type, subject and period, so repeat runs never duplicate.
     - The full sync runs at most once every 5 minutes, when an admin page loads or the bell polls. There is no cron job.
     - After you record a payment, move-out, rental change or repair change, just the affected items are re-checked immediately. So a payment clears its overdue alert right away.
@@ -118,6 +119,14 @@ Copy `.env.example` to `.env.local` and adjust:
   - Status is derived, not stored: **expired** after the end date, **expiring** within X days of it, **active** otherwise. Set X under **Settings → Agreements** (default 30).
   - Notifications, for active rentals and their latest agreement only: `agreement_expiring` (reminder) when it ends within X days, unless the tenant is already scheduled to move out by then; `agreement_expired` (alert) once the end date passes with no newer agreement. Renewing resolves both.
   - The dashboard's **Agreements expiring** card lists active rentals whose latest agreement is expiring or expired.
+- **Enquiries (leads):** `/enquiries` (nav **Enquiries**) records people who ask about a property, or about any property: name, phone, email, source (walk-in, phone call, WhatsApp, referral, OLX, 99acres, MagicBricks, NoBroker, other), budget, desired move-in, occupants, occupation and notes. Admins only; there is no public enquiry form.
+  - **Status:** `new` → `contacted` → `visit scheduled` → `visited`, in any order, then closed as **accepted**, **rejected** (by you; a reason is required), **declined** (by them; a reason is required), **no response** or **property let**. A closed enquiry can be reopened (back to `contacted`).
+  - **Timeline:** every status, follow-up, visit, WhatsApp and conversion change is logged automatically; add notes and calls by hand. Entries can't be edited or deleted. An enquiry can only be deleted (to fix a mistaken entry) while it is `new` with nothing logged beyond its creation.
+  - **Follow-ups and visits:** set a follow-up date and a visit date/time on the enquiry page. Scheduling a visit moves a new or contacted enquiry to `visit scheduled`. They drive the `enquiry_follow_up` / `enquiry_visit` notifications and the dashboard's **Enquiries** card (open count, follow-ups due, today's visits).
+  - **Duplicates:** phones are compared after normalizing (as for WhatsApp), so `98765 43210` and `+91 98765-43210` match. The form warns (without blocking) when the number belongs to another enquiry or a tenant, and the enquiry page lists previous enquiries from the number.
+  - **Convert to tenant:** on an accepted enquiry, creates a tenant from its name, phone and email, or links the existing tenant with the same phone (restoring them if archived), then opens `/rentals/new?tenant=…&property=…` with both preselected. Creating that rental links it to the enquiry.
+  - **WhatsApp:** **Message on WhatsApp** opens a wa.me link with editable text ("Hi {name}, this is regarding your enquiry for {property}.") and logs it in the timeline. Nothing is sent automatically.
+  - **Results:** the list shows, for a chosen period (default this month), enquiries received, visits, accepted / rejected / declined and the conversion rate (accepted ÷ closed in the period; "—" when nothing closed), plus the same by source. Filters: Open / Accepted / Rejected / Declined / All, search by name or phone, property, source and "follow-up due". Each property page has an **Enquiries** card.
 - **Photos:** JPEG/PNG/WebP/GIF up to 5 MB. The server checks the file type, size and file signature. Photos are stored **in MongoDB GridFS** (bucket `photos`), so they survive hosts with an ephemeral disk. They are served only to signed-in admins through `/api/uploads/[file]`. Deleting a photo or property removes its GridFS file. In development only, photos from before GridFS that are still in a local `uploads/` folder keep displaying. They are not migrated; re-upload them if you want them in the database.
 
 ## Deploy to Render
@@ -173,7 +182,7 @@ Then sign in on the Render URL. You can add more admins under **Settings**. Agai
 ```
 src/
   app/login/                 sign-in page + login/logout actions
-  app/(admin)/…              dashboard, properties, tenants, rentals, payments, maintenance,
+  app/(admin)/…              dashboard, properties, tenants, enquiries, rentals, payments, maintenance,
                              expenses, reports (hub, collections, ledger, FY summary, profit),
                              notifications, settings
   app/api/uploads/[file]/    authenticated photo serving (GridFS)
