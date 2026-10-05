@@ -189,6 +189,7 @@ export default async function DashboardPage() {
         <Card
           title="Overdue rent"
           description={overdue.length ? `${formatMoney(overdueTotal)} outstanding` : undefined}
+          actions={overdue.length ? <Link href="/reminders" className="text-sm link">Send reminders</Link> : undefined}
           className="xl:col-span-2"
           bodyClassName="p-0"
         >
