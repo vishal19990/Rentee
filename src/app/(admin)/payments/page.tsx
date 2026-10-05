@@ -9,6 +9,7 @@ import { addMonths, formatMonth, localToday, monthOf } from "@/lib/rent";
 import { Payment } from "@/models/Payment";
 import { ButtonLink, EmptyState, PageHeader, Table, TBody, Td, Th, THead } from "@/components/ui";
 import { IconArrowLeft, IconPlus, IconWallet } from "@/components/icons";
+import { ReceiptLink } from "@/components/receipt-link";
 
 export const metadata: Metadata = { title: "Payments" };
 
@@ -69,6 +70,9 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
               <Th>For month</Th>
               <Th>Method</Th>
               <Th className="text-right">Amount</Th>
+              <Th className="text-right">
+                <span className="sr-only">Receipt</span>
+              </Th>
             </THead>
             <TBody>
               {payments.map((p) => {
@@ -89,6 +93,9 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
                     <Td className="whitespace-nowrap">{formatMonth(p.forMonth)}</Td>
                     <Td>{p.method === "upi" ? "UPI" : titleCase(p.method)}</Td>
                     <Td className="text-right font-medium tabular-nums">{formatMoney(p.amount)}</Td>
+                    <Td className="text-right">
+                      <ReceiptLink paymentId={toId(p._id)} receiptNo={p.receiptNo} />
+                    </Td>
                   </tr>
                 );
               })}

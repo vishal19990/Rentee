@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { asObjectId, loadRentals } from "@/lib/data";
 import { getReminderTemplate } from "@/lib/reminders";
+import { reminderPayLinks } from "@/lib/share-links";
 import { localToday } from "@/lib/rent";
 import { buildReminder } from "@/lib/whatsapp";
 import { ReminderLog } from "@/models/ReminderLog";
@@ -30,6 +31,7 @@ export async function logReminder(rentalId: string): Promise<LogReminderResult> 
     propertyName: rental.propertyName,
     template: await getReminderTemplate(),
     today,
+    payLink: (await reminderPayLinks())?.(rentalId),
   });
   if (!built) return { ok: false, message: "Nothing to remind about." };
   if (!built.phone) return { ok: false, message: "Add a phone number" };

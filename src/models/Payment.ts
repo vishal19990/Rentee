@@ -14,9 +14,12 @@ const paymentSchema = new Schema(
     paidOn: { type: Date, required: true, index: true },
     method: { type: String, enum: PAYMENT_METHODS, required: true, default: "cash" },
     note: { type: String, default: "" },
+    /** Rent receipt number, e.g. "RNT/2026-27/0001" (F1); assigned once, never changed. */
+    receiptNo: { type: String, default: null },
   },
   { timestamps: true },
 );
+paymentSchema.index({ receiptNo: 1 }, { unique: true, partialFilterExpression: { receiptNo: { $type: "string" } } });
 
 export type PaymentDoc = InferSchemaType<typeof paymentSchema>;
 

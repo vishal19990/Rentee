@@ -35,6 +35,7 @@ import {
 } from "@/components/ui";
 import { WhatsAppReminderButton } from "@/components/whatsapp-button";
 import { AgreementCard } from "@/components/agreement-card";
+import { ReceiptLink } from "@/components/receipt-link";
 import { IconAlert, IconBolt, IconCalendar, IconCheck, IconPencil, IconTrash, IconWallet } from "@/components/icons";
 import { createPayment } from "../../payments/actions";
 import { PaymentForm } from "../../payments/payment-form";
@@ -205,6 +206,9 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
                   <Th>Method</Th>
                   <Th>Note</Th>
                   <Th className="text-right">Amount</Th>
+                  <Th className="text-right">
+                    <span className="sr-only">Receipt</span>
+                  </Th>
                 </THead>
                 <TBody>
                   {payments.map((p) => (
@@ -214,6 +218,9 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
                       <Td>{p.method === "upi" ? "UPI" : titleCase(p.method)}</Td>
                       <Td className="max-w-[16rem] truncate text-slate-500">{p.note || "—"}</Td>
                       <Td className="text-right font-medium tabular-nums">{formatMoney(p.amount)}</Td>
+                      <Td className="text-right">
+                        <ReceiptLink paymentId={String(p._id)} receiptNo={p.receiptNo} />
+                      </Td>
                     </tr>
                   ))}
                 </TBody>

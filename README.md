@@ -31,6 +31,8 @@ Copy `.env.example` to `.env.local` and adjust:
 | `NEXT_PUBLIC_DEFAULT_COUNTRY_CODE` | `91` | Added to 10-digit phone numbers for WhatsApp reminders |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_NAME` | `admin@rentee.local` / `rentee123` / `Admin` | Account created by `npm run seed` (`SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` also work). On a non-local database a password **must** be set. |
 | `NEXT_DIST_DIR` | `.next` | Build output folder, e.g. to verify a build without touching a running dev server's `.next` |
+| `APP_URL` | request host | Public base URL used in shared receipt (`/r/`) and pay (`/p/`) links, e.g. `https://rentee.onrender.com`. Recommended in production. |
+| `PDF_FONTS_DIR` | `src/assets/fonts` | Where PDF fonts are read from at runtime (relative to the working directory) |
 
 ## Scripts
 
@@ -42,7 +44,7 @@ Copy `.env.example` to `.env.local` and adjust:
 | `npm run seed -- --reset` | Wipes all Rentee data, then seeds. Refused on a non-local database unless `--force` is added. **Run this once if your `.data/db` was created before leases became rentals**; the old lease data is not migrated. |
 | `npm run db` | Runs only the local mongod (Ctrl+C to stop) |
 | `npm run build` / `npm start` | Production build / server. `npm start` listens on `0.0.0.0:$PORT` (default 3000) and never starts a local mongod. In production it exits with a clear error if `MONGODB_URI` or `AUTH_SECRET` is missing. |
-| `npm test` | Vitest unit tests (rent schedule, rent changes, charges, deposits, profit, reports, money, validation, notifications, WhatsApp) |
+| `npm test` | Vitest unit tests (rent schedule, rent changes, charges, deposits, profit, reports, money, validation, notifications, WhatsApp, receipts, signed links, UPI) |
 | `npm run typecheck` | `tsc --noEmit` |
 
 ## How it works
@@ -118,6 +120,16 @@ Copy `.env.example` to `.env.local` and adjust:
   - Status is derived, not stored: **expired** after the end date, **expiring** within X days of it, **active** otherwise. Set X under **Settings → Agreements** (default 30).
   - Notifications, for active rentals and their latest agreement only: `agreement_expiring` (reminder) when it ends within X days, unless the tenant is already scheduled to move out by then; `agreement_expired` (alert) once the end date passes with no newer agreement. Renewing resolves both.
   - The dashboard's **Agreements expiring** card lists active rentals whose latest agreement is expiring or expired.
+- **Rent receipts:** every payment has a receipt, opened with the **Receipt** button on the payments list and the rental page's payments table (`/payments/[id]/receipt`).
+  - Numbered per Indian financial year of the payment date: `RNT/2026-27/0001`, `0002`, … A payment is numbered when it is recorded; payments from before receipts existed are numbered the first time their receipt is opened. The sequence is one MongoDB counter per FY incremented atomically (`$inc`), so two payments never share a number (a rare race can leave a gap, never a duplicate).
+  - Shows your details from **Settings → Receipts** (name, address, optional phone and PAN), the tenant, property, month, the month's breakdown (rent + charges, paid so far, balance), the amount, method, date and the amount in words (Indian system: "Rupees One Lakh Twenty-Five Thousand Only").
+  - **Download PDF** (`/api/receipts/[id]`, signed-in admins only). PDFs embed Noto Sans (with Noto Sans Devanagari as a fallback) from `src/assets/fonts` (SIL Open Font License), so "₹" and Devanagari names print correctly. `src/lib/pdf-fonts.ts` (`embedAppFonts`) can be reused by other PDFs.
+  - **Send receipt on WhatsApp** opens WhatsApp with a message containing a share link `/r/<token>`. It opens without login and has its own **Download PDF**. The link shows only the tenant's first name, the property name, the month and amounts (plus your receipt details) — never the tenant's phone, ID or documents, and no payment note.
+- **UPI pay links:** set your UPI ID (and optionally a payee name) under **Settings → UPI payments** (INR only).
+  - Reminder templates get the `{payLink}` placeholder, and the default template adds "Pay by UPI: {payLink}" once a UPI ID is set. With no UPI ID, `{payLink}` is empty and no pay page is offered.
+  - The link `/p/<token>` opens without login for 45 days. It shows the property, the tenant's first name, the unpaid months and the amount due **computed live** (a link made when ₹12,000 was due shows ₹7,000 after ₹5,000 is recorded; "Nothing due, thank you" once paid), a UPI QR code (`upi://pay?pa=…&pn=…&am=…&cu=INR&tn=…`) and a "Pay with a UPI app" button.
+  - Paying does **not** record anything: "Payment is confirmed once the landlord records it". Record the payment as usual when it arrives.
+- **Signed links:** `/r/` and `/p/` are the only pages outside the login. Their tokens are HMAC-SHA256 signed with a key derived from `AUTH_SECRET` (`src/lib/signed-links.ts`); changing `AUTH_SECRET` invalidates all shared links. A tampered token gives a 404; an expired pay link gives a 404 "This link has expired". The pages are `noindex` and send no referrer.
 - **Photos:** JPEG/PNG/WebP/GIF up to 5 MB. The server checks the file type, size and file signature. Photos are stored **in MongoDB GridFS** (bucket `photos`), so they survive hosts with an ephemeral disk. They are served only to signed-in admins through `/api/uploads/[file]`. Deleting a photo or property removes its GridFS file. In development only, photos from before GridFS that are still in a local `uploads/` folder keep displaying. They are not migrated; re-upload them if you want them in the database.
 
 ## Deploy to Render
@@ -180,11 +192,16 @@ src/
   app/api/expenses/[id]/bill authenticated expense bill serving (GridFS)
   app/api/reports/…          authenticated Excel / PDF report downloads
   app/api/notifications/     notification poll endpoint (bell + desktop notifications)
+  app/api/receipts/[id]      authenticated receipt PDF
+  app/r/[token], app/p/[token]  public signed receipt / UPI pay pages (no login)
+  assets/fonts/              Noto Sans fonts for PDFs (OFL)
   components/                app shell (sidebar / mobile drawer), UI primitives, form fields
   lib/                       db, auth, session, money, rent, validation, whatsapp, reminders,
                              notifications (pure rules), notification-sync, data loaders,
                              fy, charges, deposit (+ deposit-store), expenses, profit, file-store,
-                             reports (+ reports-data, reports-xlsx, report-pdf)
+                             reports (+ reports-data, reports-xlsx, report-pdf),
+                             receipts (+ receipt-store, receipt-pdf, amount-words), pdf-fonts,
+                             signed-links, share-links, upi
   models/                    Mongoose schemas
   middleware.ts              route protection
 scripts/local-mongo.mjs      local mongod helper (dev only)

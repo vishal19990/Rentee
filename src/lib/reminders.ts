@@ -2,18 +2,22 @@ import "server-only";
 import { connectDB } from "./db";
 import type { RentalRow } from "./data";
 import { localToday } from "./rent";
-import { DEFAULT_REMINDER_TEMPLATE, buildReminder, type ReminderKind } from "./whatsapp";
+import { DEFAULT_REMINDER_TEMPLATE, DEFAULT_REMINDER_TEMPLATE_UPI, buildReminder, type ReminderKind } from "./whatsapp";
+import { reminderPayLinks } from "./share-links";
+import { upiEnabled } from "./upi";
 import { APP_SETTINGS_KEY, AppSettings } from "@/models/AppSettings";
 import { ReminderLog } from "@/models/ReminderLog";
 import { Types } from "mongoose";
 
-/** The admin-edited reminder template, or the built-in default. */
+/** The admin-edited reminder template, or the built-in default (with {payLink} once a UPI ID is set). */
 export async function getReminderTemplate(): Promise<string> {
   await connectDB();
-  const doc = await AppSettings.findOne({ key: APP_SETTINGS_KEY }).select("reminderTemplate").lean();
-  return doc?.reminderTemplate?.trim() ? doc.reminderTemplate : DEFAULT_REMINDER_TEMPLATE;
+  const doc = await AppSettings.findOne({ key: APP_SETTINGS_KEY }).select("reminderTemplate upiId").lean();
+  const saved = doc?.reminderTemplate?.trim() ? doc.reminderTemplate : null;
+  // A saved copy of either built-in default follows the UPI setting like the default does.
+  if (saved && saved !== DEFAULT_REMINDER_TEMPLATE && saved !== DEFAULT_REMINDER_TEMPLATE_UPI) return saved;
+  return upiEnabled(doc) ? DEFAULT_REMINDER_TEMPLATE_UPI : DEFAULT_REMINDER_TEMPLATE;
 }
-
 /** Latest reminder timestamp per rental id. */
 export async function lastRemindedByRental(rentalIds: string[]): Promise<Map<string, Date>> {
   if (rentalIds.length === 0) return new Map();
@@ -41,6 +45,7 @@ export type ReminderButtonProps = {
  */
 export async function reminderButtons(rows: RentalRow[], today = localToday()): Promise<Map<string, ReminderButtonProps>> {
   const template = await getReminderTemplate();
+  const payLinks = await reminderPayLinks();
   const out = new Map<string, ReminderButtonProps>();
   for (const r of rows) {
     const built = buildReminder({
@@ -50,6 +55,7 @@ export async function reminderButtons(rows: RentalRow[], today = localToday()): 
       propertyName: r.propertyName,
       template,
       today,
+      payLink: payLinks?.(r.id),
     });
     if (built) out.set(r.id, { rentalId: r.id, kind: built.kind, url: built.url, message: built.message, lastRemindedAt: null });
   }

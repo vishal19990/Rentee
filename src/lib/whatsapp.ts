@@ -9,13 +9,16 @@ import { addMonths, dueForMonth, formatMonth, monthOf, type ChargeLike, type Ren
 
 export const DEFAULT_COUNTRY_CODE = (process.env.NEXT_PUBLIC_DEFAULT_COUNTRY_CODE || "91").replace(/\D/g, "") || "91";
 
-export const REMINDER_PLACEHOLDERS = ["tenant", "property", "amount", "months", "dueDate"] as const;
+export const REMINDER_PLACEHOLDERS = ["tenant", "property", "amount", "months", "dueDate", "payLink"] as const;
 export type ReminderPlaceholder = (typeof REMINDER_PLACEHOLDERS)[number];
 export type ReminderVars = Record<ReminderPlaceholder, string>;
 
 export const DEFAULT_REMINDER_TEMPLATE =
   "Hi {tenant}, this is a friendly reminder that rent of {amount} for {property} is pending for {months} (due {dueDate}). " +
   "Please pay at your earliest convenience. Thank you!";
+
+/** Default template once a UPI ID is set in Settings: adds the UPI pay link ({payLink}, F10). */
+export const DEFAULT_REMINDER_TEMPLATE_UPI = `${DEFAULT_REMINDER_TEMPLATE} Pay by UPI: {payLink}`;
 
 export const NO_PHONE_TOOLTIP = "Add a phone number";
 
@@ -124,13 +127,14 @@ export function reminderDue(rental: ReminderRental, today: string): ReminderDue 
   return { kind: "due_soon", months: [{ month: next, dueDate, balance: amount }], amount, dueDate };
 }
 
-export function reminderVars(due: ReminderDue, tenant: string, property: string): ReminderVars {
+export function reminderVars(due: ReminderDue, tenant: string, property: string, payLink = ""): ReminderVars {
   return {
     tenant,
     property,
     amount: formatMoneyShort(due.amount),
     months: due.months.map((m) => formatMonth(m.month)).join(", "),
     dueDate: formatDate(due.dueDate),
+    payLink,
   };
 }
 
@@ -151,10 +155,13 @@ export function buildReminder(input: {
   propertyName: string;
   template: string;
   today: string;
+  /** Builds the UPI pay link for {payLink} (F10); omitted or "" when UPI isn't configured. */
+  payLink?: (due: ReminderDue) => string;
 }): BuiltReminder | null {
   const due = reminderDue(input.rental, input.today);
   if (!due) return null;
-  const message = renderTemplate(input.template, reminderVars(due, input.tenantName, input.propertyName));
+  const payLink = input.payLink?.(due) ?? "";
+  const message = renderTemplate(input.template, reminderVars(due, input.tenantName, input.propertyName, payLink));
   const phone = normalizePhone(input.tenantPhone);
   return { kind: due.kind, message, phone, url: phone ? whatsappUrl(phone, message) : null };
 }
