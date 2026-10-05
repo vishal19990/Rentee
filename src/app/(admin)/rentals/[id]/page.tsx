@@ -26,6 +26,7 @@ import {
   THead,
 } from "@/components/ui";
 import { WhatsAppReminderButton } from "@/components/whatsapp-button";
+import { AgreementCard } from "@/components/agreement-card";
 import { IconAlert, IconCalendar, IconCheck, IconPencil, IconTrash, IconWallet } from "@/components/icons";
 import { createPayment } from "../../payments/actions";
 import { PaymentForm } from "../../payments/payment-form";
@@ -235,6 +236,8 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
               </ActionForm>
             </Card>
           )}
+
+          <AgreementCard rental={r} />
 
           <Card title="Details">
             <DetailList

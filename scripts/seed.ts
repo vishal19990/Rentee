@@ -83,6 +83,10 @@ async function main() {
     for (const name of ["notifications", "reminderlogs", "appsettings", "photos.files", "photos.chunks"]) {
       await db.collection(name).deleteMany({});
     }
+    // Tenant documents (GridFS bucket "documents") and rental agreements.
+    for (const name of ["tenantdocuments", "documents.files", "documents.chunks", "agreements"]) {
+      await db.collection(name).deleteMany({});
+    }
     // Leftover from before month-to-month rentals replaced leases.
     const legacy = await mongoose.connection.db!.listCollections({ name: "leases" }).toArray();
     if (legacy.length) await mongoose.connection.db!.dropCollection("leases");

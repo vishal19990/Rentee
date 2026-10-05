@@ -13,6 +13,8 @@ import { Payment } from "@/models/Payment";
 import { Property } from "@/models/Property";
 import { Rental } from "@/models/Rental";
 import { Tenant } from "@/models/Tenant";
+import { Agreement } from "@/models/Agreement";
+import { TenantDocument } from "@/models/TenantDocument";
 
 const NOT_FOUND: ActionState = { ok: false, message: "Rental not found." };
 const ACTIVE_EXISTS = "Property already has an active rental";
@@ -186,6 +188,8 @@ export async function deleteRental(id: string): Promise<ActionState> {
   }
   const rental = await Rental.findByIdAndDelete(_id).lean();
   if (!rental) return NOT_FOUND;
+  await Agreement.deleteMany({ rental: _id }); // F8: agreements belong to the rental
+  await TenantDocument.updateMany({ rental: _id }, { $set: { rental: null } }); // F7: documents stay with the tenant
   await syncNotificationsSafe({ scope: { rentalIds: [id] } });
   revalidateRentalViews(undefined, String(rental.property), String(rental.tenant));
   redirect("/rentals");

@@ -25,6 +25,7 @@ import {
   THead,
 } from "@/components/ui";
 import { WhatsAppReminderButton } from "@/components/whatsapp-button";
+import { DocumentsCard } from "@/components/documents-card";
 import { IconArchive, IconFile, IconPencil, IconPlus, IconTrash } from "@/components/icons";
 import { deleteTenant, setTenantArchived } from "../actions";
 
@@ -117,6 +118,7 @@ export default async function TenantPage({ params }: { params: Promise<{ id: str
               </Table>
             )}
           </Card>
+          <DocumentsCard tenantId={id} />
         </div>
         <div className="space-y-6">
           <Card title="Details">

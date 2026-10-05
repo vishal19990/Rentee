@@ -1,4 +1,5 @@
 import "server-only";
+import { agreementNotificationSpecs } from "./agreement-data";
 import { connectDB } from "./db";
 import { loadRentals, toId } from "./data";
 import {
@@ -116,6 +117,7 @@ export async function syncNotifications(
   ]);
 
   const desired = desiredNotifications({ rentals, maintenance, thresholds, today, now });
+  desired.push(...(await agreementNotificationSpecs(rentals, today))); // F8: agreement_expiring / agreement_expired
   const desiredKeys = desired.map((d) => d.key);
   const subjectFilter = scope
     ? { $or: [{ rental: { $in: rentalIds } }, { maintenance: { $in: maintenanceIds } }] }

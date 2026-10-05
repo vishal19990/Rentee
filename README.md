@@ -87,6 +87,18 @@ Copy `.env.example` to `.env.local` and adjust:
     - Rent items include the WhatsApp remind button.
   - **Desktop notifications:** open tabs poll `/api/notifications` (login required) every 60 s and show a browser notification for new items. Rentee asks the browser for permission only when you click **Enable desktop notifications**, never on page load. There is no Web Push or service worker, so nothing arrives when no Rentee tab is open.
   - **Settings → Notifications:** set N, M and K, and turn desktop notifications on or off.
+- **Tenant documents:** Aadhaar, PAN, agreement, police verification, photo or other, uploaded on the tenant page.
+  - PDF, JPG, PNG or WebP up to 10 MB. The file type is decided by the file's signature (magic bytes), not its name, so a renamed `.exe` is rejected.
+  - Stored in MongoDB GridFS (bucket `documents`, separate from photos). A document can optionally be linked to one of the tenant's rentals.
+  - Viewed or downloaded only through `/api/documents/[id]`, which requires a signed-in admin (`401` otherwise) and is sent with `Cache-Control: private, no-store`. There is no public link.
+  - Deleting a document removes its GridFS file and unlinks it from any agreement. Deleting a tenant deletes their documents.
+- **Rental agreements:** the rental page has an **Agreement** card.
+  - **Add agreement** records the current agreement. The start date defaults to move-in. Leave the end date empty to use start + 11 months − 1 day (1 Jun 2026 → 30 Apr 2027); for a start on a day the target month lacks, the day is clamped first (31 Mar 2026 → 27 Feb 2027).
+  - **Renew** creates the next agreement starting the day after the latest one ends. Older agreements stay as history. Only the latest agreement can be deleted, to correct a mistake.
+  - A signed copy can be linked from the tenant's documents.
+  - Status is derived, not stored: **expired** after the end date, **expiring** within X days of it, **active** otherwise. Set X under **Settings → Agreements** (default 30).
+  - Notifications, for active rentals and their latest agreement only: `agreement_expiring` (reminder) when it ends within X days, unless the tenant is already scheduled to move out by then; `agreement_expired` (alert) once the end date passes with no newer agreement. Renewing resolves both.
+  - The dashboard's **Agreements expiring** card lists active rentals whose latest agreement is expiring or expired.
 - **Photos:** JPEG/PNG/WebP/GIF up to 5 MB. The server checks the file type, size and file signature. Photos are stored **in MongoDB GridFS** (bucket `photos`), so they survive hosts with an ephemeral disk. They are served only to signed-in admins through `/api/uploads/[file]`. Deleting a photo or property removes its GridFS file. In development only, photos from before GridFS that are still in a local `uploads/` folder keep displaying. They are not migrated; re-upload them if you want them in the database.
 
 ## Deploy to Render
