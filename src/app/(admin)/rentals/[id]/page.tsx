@@ -144,7 +144,7 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
-          <Card title="Rent schedule" description="Rent plus charges, less payments; newest month first." bodyClassName="p-0">
+          <Card title="Rent schedule" description="Rent plus charges, less payments; newest month first." bodyClassName="p-0" actions={<a href={`/api/reports/ledger?rental=${id}&format=pdf`} download className="btn btn-secondary btn-sm">Download ledger</a>}>
             {schedule.length === 0 ? (
               <EmptyState
                 compact

@@ -100,6 +100,7 @@ export default async function ProfitReportPage({ searchParams }: { searchParams:
   return (
     <>
       <PageHeader
+        back={{ href: "/reports", label: "Reports" }}
         title="Profit report"
         description={`Financial year ${fy} (1 Apr ${start.slice(0, 4)} – 31 Mar ${end.slice(0, 4)}). Income is rent received, by payment date.`}
         actions={

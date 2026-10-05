@@ -42,7 +42,7 @@ Copy `.env.example` to `.env.local` and adjust:
 | `npm run seed -- --reset` | Wipes all Rentee data, then seeds. Refused on a non-local database unless `--force` is added. **Run this once if your `.data/db` was created before leases became rentals**; the old lease data is not migrated. |
 | `npm run db` | Runs only the local mongod (Ctrl+C to stop) |
 | `npm run build` / `npm start` | Production build / server. `npm start` listens on `0.0.0.0:$PORT` (default 3000) and never starts a local mongod. In production it exits with a clear error if `MONGODB_URI` or `AUTH_SECRET` is missing. |
-| `npm test` | Vitest unit tests (rent schedule, rent changes, charges, deposits, profit, money, validation, notifications, WhatsApp) |
+| `npm test` | Vitest unit tests (rent schedule, rent changes, charges, deposits, profit, reports, money, validation, notifications, WhatsApp) |
 | `npm run typecheck` | `tsc --noEmit` |
 
 ## How it works
@@ -101,6 +101,11 @@ Copy `.env.example` to `.env.local` and adjust:
   - A maintenance request's page has **Log cost as expense**, which opens a pre-filled expense form. Each request can be logged once.
   - A property with expenses can't be deleted; archive it instead.
   - `/reports/profit` shows income minus expenses for an Indian financial year (1 April – 31 March). The table lists each property, plus a General row, and a total. A monthly chart and table cover all properties or one. Income is rent received, counted by payment date (a payment on 31 Mar 2027 counts in 2026-27, one on 1 Apr 2027 in 2027-28).
+- **Reports:** `/reports` is the hub. Every report can be downloaded as Excel (.xlsx); the tenant ledger and the FY summary also as PDF. Downloads go through `/api/reports/…`, which need a signed-in admin (`401` otherwise) and are sent with `Cache-Control: private, no-store`.
+  - **Monthly collections** (`/reports/collections`): for a month, each rental's rent + charges due, paid, balance and status, plus the cash received in that month by payment date; and the same totals for every month of that financial year.
+  - **Tenant ledger** (`/reports/ledger`): for one rental, every month from move-in with rent (after rent changes), charges, due, paid, balance and a running outstanding (negative = paid ahead), the payments, and the deposit entries with the held balance after each. **Download ledger** on a rental page downloads its PDF; on a tenant page it opens the ledger for that tenant's rentals.
+  - **Financial year summary** (`/reports/fy`): per property (plus General) income, expenses and profit for an Indian FY, expenses by category, and the total rent received for your ITR. Income is payments by payment date, so it includes utility charges collected with rent.
+  - Excel files hold amounts as numbers (in rupees, not paise) so you can sum and chart them. PDFs use the built-in Helvetica font, so `₹` prints as `Rs.` and characters outside Latin-1 (e.g. Devanagari names) print as `?`.
 - **Tenant documents:** Aadhaar, PAN, agreement, police verification, photo or other, uploaded on the tenant page.
   - PDF, JPG, PNG or WebP up to 10 MB. The file type is decided by the file's signature (magic bytes), not its name, so a renamed `.exe` is rejected.
   - Stored in MongoDB GridFS (bucket `documents`, separate from photos). A document can optionally be linked to one of the tenant's rentals.
@@ -169,14 +174,17 @@ Then sign in on the Render URL. You can add more admins under **Settings**. Agai
 src/
   app/login/                 sign-in page + login/logout actions
   app/(admin)/…              dashboard, properties, tenants, rentals, payments, maintenance,
-                             expenses, reports (profit), notifications, settings
+                             expenses, reports (hub, collections, ledger, FY summary, profit),
+                             notifications, settings
   app/api/uploads/[file]/    authenticated photo serving (GridFS)
   app/api/expenses/[id]/bill authenticated expense bill serving (GridFS)
+  app/api/reports/…          authenticated Excel / PDF report downloads
   app/api/notifications/     notification poll endpoint (bell + desktop notifications)
   components/                app shell (sidebar / mobile drawer), UI primitives, form fields
   lib/                       db, auth, session, money, rent, validation, whatsapp, reminders,
                              notifications (pure rules), notification-sync, data loaders,
-                             fy, charges, deposit (+ deposit-store), expenses, profit, file-store
+                             fy, charges, deposit (+ deposit-store), expenses, profit, file-store,
+                             reports (+ reports-data, reports-xlsx, report-pdf)
   models/                    Mongoose schemas
   middleware.ts              route protection
 scripts/local-mongo.mjs      local mongod helper (dev only)
@@ -184,4 +192,4 @@ render.yaml                  Render blueprint
 scripts/seed.ts              admin + demo data
 ```
 
-Out of scope for this build: online payments, email/SMS, accounting export.
+Out of scope for this build: online payments, email/SMS, accounting-software integration (reports export to Excel/PDF only).

@@ -78,7 +78,7 @@ Existing app (read README.md first). Key reuse points:
 - [x] rental page cards + actions for rent change, charges (electricity calculator), deposit; `/expenses` CRUD; `/reports/profit` -- F2–F5 UI
 **Execution (batch B):**
 - [ ] `src/lib/signed-links.ts`, receipt numbering counter, amount-in-words, PDF generation (pdf-lib or @react-pdf/renderer), `/r/[token]`, receipt buttons on payments/rental pages -- F1
-- [ ] `/reports` hub + xlsx/PDF exports -- F6
+- [x] `/reports` hub + xlsx/PDF exports -- F6
 - [ ] `/reminders` bulk flow -- F9
 - [ ] UPI settings, `/p/[token]` with QR (`qrcode` package), `{payLink}` placeholder -- F10
 **Execution (batch C):**
@@ -97,6 +97,7 @@ Existing app (read README.md first). Key reuse points:
 - Decisions: Rental.monthlyRent stays the original rent (RentalRow.currentRent for display); same effective month replaces a rent change; charges and rent changes are deletable (only payments/deposit entries are append-only); deposit held balance is guarded atomically by a cached Rental.depositHeld counter ($inc with $gte filter), ledger stays the source of truth; legacy rentals get their initial received entry lazily on first view; rentals with manual deposit entries cannot be deleted; properties with expenses cannot be deleted; electricity rate = Property.electricityRate, else Settings.defaultElectricityRate; profit is cash basis (payments by paidOn).
 - Extension points for later batches: lib/fy.ts (receipt FY numbering, FY summary), lib/profit.ts, lib/file-store.ts (add a "documents" bucket), validateAttachment (PDF/JPG/PNG/WEBP <=10 MB, magic bytes), /reports currently redirects to /reports/profit (replace with the hub), RentMonth.rent/charges/chargeItems for receipts and ledgers.
 - next.config.ts: serverActions bodySizeLimit and middlewareClientMaxBodySize raised to 16mb (needs a dev-server restart).
+- 2026-10-05 F6 (reports & export) implemented by subagent: /reports hub, /reports/collections, /reports/ledger, /reports/fy (profit kept at /reports/profit); auth-protected downloads /api/reports/{collections,ledger,fy-summary} (exceljs; pdf-lib with standard Helvetica, so ₹ -> "Rs." and non-Latin-1 text -> "?"). Pure builders in lib/reports.ts (tests in lib/reports.test.ts). FY "rent received for ITR" = payments by paidOn (includes charges collected with rent). Collections months capped at the current month (schedules end there).
 
 ## Spec Change Log
 
