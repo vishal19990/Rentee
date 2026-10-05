@@ -100,6 +100,10 @@ async function main() {
     for (const name of ["tenantdocuments", "documents.files", "documents.chunks", "agreements"]) {
       await db.collection(name).deleteMany({});
     }
+    // Property enquiries and their timelines.
+    for (const name of ["enquiries", "enquiryactivities"]) {
+      await db.collection(name).deleteMany({});
+    }
     // Leftover from before month-to-month rentals replaced leases.
     const legacy = await mongoose.connection.db!.listCollections({ name: "leases" }).toArray();
     if (legacy.length) await mongoose.connection.db!.dropCollection("leases");
@@ -261,7 +265,59 @@ async function main() {
     { property: harbor._id, title: "Replace bathroom exhaust fan", priority: "medium", status: "done", cost: money(2200) },
   ]);
 
-  console.log("Demo data ready: 4 properties, 4 tenants, 4 rentals, payments and maintenance requests.");
+  await seedEnquiries(today, { palm: palm._id, lotus: lotus._id, cedar: cedar._id }, { tenant: rahul._id, rental: lotusRental._id });
+
+  console.log("Demo data ready: 4 properties, 4 tenants, 4 rentals, payments, maintenance requests and enquiries.");
+}
+
+/** Demo enquiries across statuses, each with a short timeline. */
+async function seedEnquiries(
+  today: string,
+  props: { palm: unknown; lotus: unknown; cedar: unknown },
+  converted: { tenant: unknown; rental: unknown },
+) {
+  const { Enquiry } = await import("../src/models/Enquiry");
+  const { EnquiryActivity } = await import("../src/models/EnquiryActivity");
+  const { STATUS_LABEL, phoneKey } = await import("../src/lib/enquiries");
+  const at = (iso: string, hour = 11) => new Date(`${iso}T${String(hour).padStart(2, "0")}:00:00`);
+  const rows = [
+    { name: "Karan Malhotra", phone: "98111 22334", property: props.cedar, source: "nobroker", budget: money(36000), status: "new", created: addDays(today, -1), followUpDate: today, log: [] as string[] },
+    { name: "Sneha Kulkarni", phone: "+91 97000 11122", property: props.cedar, source: "99acres", budget: money(40000), status: "contacted", created: addDays(today, -4), followUpDate: addDays(today, -1), log: ["call:Called, interested. Wants to see it this week."] },
+    { name: "Arjun Nair", phone: "99887 76655", property: props.cedar, source: "walk_in", occupants: 3, status: "visit_scheduled", created: addDays(today, -3), visitAt: at(addDays(today, 1), 17), log: ["visit:Visit scheduled"] },
+    { name: "Fatima Sheikh", phone: "90044 55667", property: null, source: "referral", budget: money(30000), status: "visited", created: addDays(today, -8), visitAt: at(addDays(today, -2), 11), followUpDate: addDays(today, 2), log: ["visit:Visited, liked the area"] },
+    { name: "Rohan Gupta", phone: "98450 99887", property: props.cedar, source: "olx", budget: money(25000), status: "rejected", outcomeReason: "low_budget", outcomeNote: "Can stretch to 25k only", created: addDays(today, -20), outcomeAt: at(addDays(today, -15)), log: [] },
+    { name: "Divya Rao", phone: "97400 12345", property: props.palm, source: "magicbricks", status: "declined", outcomeReason: "found_elsewhere", created: addDays(today, -40), outcomeAt: at(addDays(today, -30)), log: [] },
+    { name: "Rahul Verma", phone: "99001 44556", property: props.lotus, source: "phone_call", status: "accepted", created: monthsAgo(today, 9), outcomeAt: at(monthsAgo(today, 8)), log: [] },
+    { name: "Imran Khan", phone: "96111 00099", property: props.palm, source: "whatsapp", status: "no_response", created: addDays(today, -25), outcomeAt: at(addDays(today, -10)), log: ["whatsapp:WhatsApp opened"] },
+  ];
+  for (const r of rows) {
+    const created = at(r.created, 10);
+    const e = await Enquiry.create({
+      name: r.name,
+      phone: r.phone,
+      phoneKey: phoneKey(r.phone),
+      property: r.property,
+      source: r.source,
+      budget: r.budget ?? null,
+      occupants: r.occupants ?? null,
+      status: r.status,
+      outcomeReason: r.outcomeReason ?? "",
+      outcomeNote: r.outcomeNote ?? "",
+      outcomeAt: r.outcomeAt ?? null,
+      followUpDate: r.followUpDate ? d(r.followUpDate) : null,
+      visitAt: r.visitAt ?? null,
+      ...(r.status === "accepted" ? { convertedTenant: converted.tenant, convertedRental: converted.rental } : {}),
+    });
+    // Backdate (createdAt is immutable through Mongoose, so use the driver).
+    await Enquiry.collection.updateOne({ _id: e._id }, { $set: { createdAt: created, updatedAt: created } });
+    const acts = [{ kind: "status_change", text: "Enquiry created", at: created }];
+    for (const l of r.log) {
+      const [kind, text] = l.split(":");
+      acts.push({ kind, text, at: new Date(created.getTime() + 3600_000) });
+    }
+    if (r.outcomeAt) acts.push({ kind: "status_change", text: `Status → ${STATUS_LABEL[r.status as keyof typeof STATUS_LABEL]}`, at: r.outcomeAt });
+    await EnquiryActivity.create(acts.map((a) => ({ ...a, enquiry: e._id })));
+  }
 }
 
 main()

@@ -10,6 +10,7 @@ import { dateFromISO } from "@/lib/format";
 import { localToday, monthOf, rentalStatus, toISODate } from "@/lib/rent";
 import { moveOutSchema, parseForm, rentalSchema, rentalUpdateSchema, type ActionState } from "@/lib/validation";
 import { ensureDepositLedger } from "@/lib/deposit-store";
+import { linkConvertedRental } from "@/lib/enquiry-data";
 import { Charge } from "@/models/Charge";
 import { DepositEntry } from "@/models/DepositEntry";
 import { Payment } from "@/models/Payment";
@@ -86,6 +87,7 @@ export async function createRental(_prev: ActionState, fd: FormData): Promise<Ac
   }
   // Deposit > 0 opens the deposit ledger with a "received" entry.
   await ensureDepositLedger(id);
+  await linkConvertedRental(tenantId, propertyId, id); // enquiry converted to this tenant -> link the rental
   await syncNotificationsSafe({ scope: { rentalIds: [id] } });
   revalidateRentalViews(id, propertyId, tenantId);
   redirect(`/rentals/${id}`);

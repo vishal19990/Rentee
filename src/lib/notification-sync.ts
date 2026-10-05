@@ -1,6 +1,7 @@
 import "server-only";
 import { agreementNotificationSpecs } from "./agreement-data";
 import { connectDB } from "./db";
+import { enquiryNotificationKeyFilter, enquiryNotificationSpecs } from "./enquiry-data";
 import { loadRentals, toId } from "./data";
 import {
   DEFAULT_THRESHOLDS,
@@ -92,7 +93,7 @@ async function loadMaintenance(filter: Record<string, unknown>): Promise<Mainten
  * Returns whether a sync ran.
  */
 export async function syncNotifications(
-  opts: { force?: boolean; scope?: { rentalIds?: string[]; maintenanceIds?: string[] } } = {},
+  opts: { force?: boolean; scope?: { rentalIds?: string[]; maintenanceIds?: string[]; enquiryIds?: string[] } } = {},
 ): Promise<boolean> {
   await connectDB();
   const now = new Date();
@@ -118,9 +119,16 @@ export async function syncNotifications(
 
   const desired = desiredNotifications({ rentals, maintenance, thresholds, today, now });
   desired.push(...(await agreementNotificationSpecs(rentals, today))); // F8: agreement_expiring / agreement_expired
+  desired.push(...(await enquiryNotificationSpecs(scope ? (scope.enquiryIds ?? []) : null, now))); // enquiry follow-ups / visits
   const desiredKeys = desired.map((d) => d.key);
   const subjectFilter = scope
-    ? { $or: [{ rental: { $in: rentalIds } }, { maintenance: { $in: maintenanceIds } }] }
+    ? {
+        $or: [
+          { rental: { $in: rentalIds } },
+          { maintenance: { $in: maintenanceIds } },
+          ...enquiryNotificationKeyFilter(scope.enquiryIds ?? []),
+        ],
+      }
     : { resolvedAt: null };
   const existing = await Notification.find({ $or: [subjectFilter, { key: { $in: desiredKeys } }] })
     .select("key title body resolvedAt")

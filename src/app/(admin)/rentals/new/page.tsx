@@ -13,10 +13,13 @@ export const metadata: Metadata = { title: "New rental" };
 export default async function NewRentalPage({
   searchParams,
 }: {
-  searchParams: Promise<{ propertyId?: string; tenantId?: string }>;
+  searchParams: Promise<{ propertyId?: string; tenantId?: string; property?: string; tenant?: string }>;
 }) {
   await requireUser();
-  const { propertyId, tenantId } = await searchParams;
+  const sp = await searchParams;
+  // `property` / `tenant` are accepted too (used by "Convert to tenant" on an enquiry).
+  const propertyId = sp.propertyId ?? sp.property;
+  const tenantId = sp.tenantId ?? sp.tenant;
   const [properties, tenants, occupied] = await Promise.all([propertyOptions(), tenantOptions(), occupiedPropertyIds()]);
   const selected = properties.find((p) => p.id === propertyId);
 
