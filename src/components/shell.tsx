@@ -72,12 +72,16 @@ function Sidebar({
 
   return (
     <div className="flex h-full flex-col bg-slate-950 text-slate-300">
-      <div className="px-5 pt-6 pb-8">
+      <div className="shrink-0 px-5 pt-6 pb-6">
         <Link href="/dashboard" onClick={onNavigate}>
           <Logo light />
         </Link>
       </div>
-      <nav className="flex-1 space-y-1 px-3" aria-label="Main">
+      {/* Only the link list scrolls; logo and account card stay put on short screens. */}
+      <nav
+        className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain px-3 pb-2 [scrollbar-color:rgb(255_255_255/0.15)_transparent] [scrollbar-width:thin]"
+        aria-label="Main"
+      >
         {NAV.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`);
           return (
@@ -104,7 +108,7 @@ function Sidebar({
           );
         })}
       </nav>
-      <div className="m-3 rounded-2xl bg-white/5 p-3 ring-1 ring-white/10">
+      <div className="m-3 shrink-0 rounded-2xl bg-white/5 p-3 ring-1 ring-white/10">
         <div className="flex items-center gap-3">
           <span className="grid size-9 shrink-0 place-items-center rounded-full bg-brand-500/20 text-sm font-semibold text-brand-200">
             {initials || "A"}
