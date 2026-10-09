@@ -3,6 +3,7 @@
  * All figures shown are illustrative sample data.
  */
 import clsx from "clsx";
+import { LogoMark } from "@/components/brand";
 
 /** A row of stylised houses with a rupee coin and keys — the hero illustration. */
 export function HousesIllustration({ className }: { className?: string }) {
@@ -126,7 +127,7 @@ export function DashboardMockup({ className }: { className?: string }) {
       <div className="flex">
         <div className="hidden w-28 shrink-0 space-y-1.5 bg-slate-950 p-3 sm:block">
           <div className="mb-3 flex items-center gap-1.5">
-            <span className="size-4 rounded bg-gradient-to-br from-brand-400 to-brand-700" />
+            <LogoMark className="size-4 shadow-none" />
             <span className="h-2 w-10 rounded bg-white/70" />
           </div>
           {[1, 0, 0, 0, 0, 0, 0].map((a, i) => (

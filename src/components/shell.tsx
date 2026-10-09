@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import type { NotificationFeed } from "@/lib/notification-sync";
+import { Logo } from "./brand";
 import { NotificationBell, NotificationsProvider, useNotifications } from "./notifications";
 import {
   IconBell,
@@ -39,18 +40,7 @@ const NAV = [
   { href: "/settings", label: "Settings", icon: IconSettings },
 ];
 
-export function Logo({ light }: { light?: boolean }) {
-  return (
-    <span className="flex items-center gap-2.5">
-      <span className="grid size-9 place-items-center rounded-xl bg-gradient-to-br from-brand-400 to-brand-700 text-white shadow-lg shadow-brand-900/30">
-        <IconHome className="size-5" />
-      </span>
-      <span className={clsx("text-lg font-semibold tracking-tight", light ? "text-white" : "text-slate-900")}>
-        Rentee
-      </span>
-    </span>
-  );
-}
+export { Logo };
 
 function Sidebar({
   user,

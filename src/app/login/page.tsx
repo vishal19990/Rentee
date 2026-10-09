@@ -19,7 +19,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       />
       <div className="relative w-full max-w-sm">
         <div className="mb-8 flex justify-center">
-          <Logo light />
+          <Logo light size="lg" />
         </div>
         <div className="rounded-2xl bg-white p-6 shadow-2xl shadow-black/30 sm:p-8">
           <h1 className="text-xl font-semibold tracking-tight text-slate-900">Welcome back</h1>
