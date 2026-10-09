@@ -10,6 +10,8 @@ export async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
   // The login page itself decides (with a DB check) whether to bounce a signed-in user.
   if (pathname === "/login") return NextResponse.next();
+  // Public landing page (marketing only; it reads the session cookie just to pick its button).
+  if (pathname === "/") return NextResponse.next();
   // Public receipt (/r/<token>) and UPI pay (/p/<token>) links: no login, but each page only
   // renders for a valid HMAC-signed token (checked there). The path is passed on so their
   // not-found page can tell an expired link from an invalid one.
