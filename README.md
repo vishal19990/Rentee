@@ -44,7 +44,7 @@ Copy `.env.example` to `.env.local` and adjust:
 | `npm run seed -- --reset` | Wipes all Rentee data (enquiries included), then seeds. Refused on a non-local database unless `--force` is added. **Run this once if your `.data/db` was created before leases became rentals**; the old lease data is not migrated. |
 | `npm run db` | Runs only the local mongod (Ctrl+C to stop) |
 | `npm run build` / `npm start` | Production build / server. `npm start` listens on `0.0.0.0:$PORT` (default 3000) and never starts a local mongod. In production it exits with a clear error if `MONGODB_URI` or `AUTH_SECRET` is missing. |
-| `npm test` | Vitest unit tests (rent schedule, rent changes, charges, deposits, profit, reports, money, validation, notifications, WhatsApp, receipts, signed links, UPI, enquiries) |
+| `npm test` | Vitest unit tests (rent schedule, rent changes, charges, deposits, profit, reports, money, validation, notifications, WhatsApp, receipts, signed links, UPI, enquiries, virtual tours) |
 | `npm run typecheck` | `tsc --noEmit` |
 
 ## How it works
@@ -130,7 +130,7 @@ Copy `.env.example` to `.env.local` and adjust:
   - Reminder templates get the `{payLink}` placeholder, and the default template adds "Pay by UPI: {payLink}" once a UPI ID is set. With no UPI ID, `{payLink}` is empty and no pay page is offered.
   - The link `/p/<token>` opens without login for 45 days. It shows the property, the tenant's first name, the unpaid months and the amount due **computed live** (a link made when ₹12,000 was due shows ₹7,000 after ₹5,000 is recorded; "Nothing due, thank you" once paid), a UPI QR code (`upi://pay?pa=…&pn=…&am=…&cu=INR&tn=…`) and a "Pay with a UPI app" button.
   - Paying does **not** record anything: "Payment is confirmed once the landlord records it". Record the payment as usual when it arrives.
-- **Signed links:** `/r/` and `/p/` are the only pages outside the login. Their tokens are HMAC-SHA256 signed with a key derived from `AUTH_SECRET` (`src/lib/signed-links.ts`); changing `AUTH_SECRET` invalidates all shared links. A tampered token gives a 404; an expired pay link gives a 404 "This link has expired". The pages are `noindex` and send no referrer.
+- **Signed links:** `/r/`, `/p/` and `/t/` are the only pages outside the login. Their tokens are HMAC-SHA256 signed with a key derived from `AUTH_SECRET` (`src/lib/signed-links.ts`); changing `AUTH_SECRET` invalidates all shared links. A tampered token gives a 404; an expired pay link gives a 404 "This link has expired". The pages are `noindex` and send no referrer.
 - **Enquiries (leads):** `/enquiries` (nav **Enquiries**) records people who ask about a property, or about any property: name, phone, email, source (walk-in, phone call, WhatsApp, referral, OLX, 99acres, MagicBricks, NoBroker, other), budget, desired move-in, occupants, occupation and notes. Admins only; there is no public enquiry form.
   - **Status:** `new` → `contacted` → `visit scheduled` → `visited`, in any order, then closed as **accepted**, **rejected** (by you; a reason is required), **declined** (by them; a reason is required), **no response** or **property let**. A closed enquiry can be reopened (back to `contacted`).
   - **Timeline:** every status, follow-up, visit, WhatsApp and conversion change is logged automatically; add notes and calls by hand. Entries can't be edited or deleted. An enquiry can only be deleted (to fix a mistaken entry) while it is `new` with nothing logged beyond its creation.
@@ -139,6 +139,14 @@ Copy `.env.example` to `.env.local` and adjust:
   - **Convert to tenant:** on an accepted enquiry, creates a tenant from its name, phone and email, or links the existing tenant with the same phone (restoring them if archived), then opens `/rentals/new?tenant=…&property=…` with both preselected. Creating that rental links it to the enquiry.
   - **WhatsApp:** **Message on WhatsApp** opens a wa.me link with editable text ("Hi {name}, this is regarding your enquiry for {property}.") and logs it in the timeline. Nothing is sent automatically.
   - **Results:** the list shows, for a chosen period (default this month), enquiries received, visits, accepted / rejected / declined and the conversion rate (accepted ÷ closed in the period; "—" when nothing closed), plus the same by source. Filters: Open / Accepted / Rejected / Declined / All, search by name or phone, property, source and "follow-up due". Each property page has an **Enquiries** card.
+- **Virtual tours (360°):** each property page has a **Virtual tour** card (empty with **Create tour** until you add one). The editor is at `/properties/[id]/tour`.
+  - **Rooms** are 360° photos (equirectangular, twice as wide as tall, ±3%): JPEG, PNG or WebP. The browser shrinks anything wider than 6144 px to 6144 × 3072 JPEG and makes a 512 × 256 thumbnail before upload; the server re-checks the signature, size (12 MB photo / 300 KB thumbnail) and the 2:1 shape ("This isn't a 360° photo …"). Files live in GridFS (bucket `tours`) and are served to admins through `/api/tours/[roomId]/(image|thumb)`.
+  - **Editing:** rename, reorder, delete (removes its files and every link pointing to it), **Set as start**, **Set starting view** (the direction the room opens in), and **Add link**: click a spot such as a door, pick the room it opens, optionally with a return link (placed opposite if you don't add one by hand). Links show as arrows; click one to walk into that room.
+  - **Sample tour:** a property without rooms offers **Use sample tour**, which adds three demo rooms (Living room, Bedroom, Kitchen) linked at their doors, marked **Sample**. They behave like normal rooms; replace them with your own photos. `npm run seed` adds it to the first demo property. The images are generated by `node scripts/generate-sample-tour.mjs` into `src/assets/sample-tour/` (with `manifest.json` holding each door's hotspot).
+  - **External tour (optional):** a Matterport (`my.matterport.com`), Kuula (`kuula.co`), YouTube (converted to `/embed/`) or Google Maps embed (`www.google.com/maps/embed`) link, shown in a sandboxed iframe. With both, the tour has "360° rooms" / "External tour" tabs.
+  - **Viewer:** Photo Sphere Viewer (MIT, bundled, no CDN), loaded only on tour pages. Drag or swipe to look, zoom, fullscreen, gyroscope on phones, arrows and room thumbnails to move; the first room slowly turns until you touch it.
+  - **Sharing:** turn on **Share link** to get `/t/<token>` (copy it or **Send on WhatsApp**). It opens without login and shows only the property name, city, bedrooms/bathrooms, asking rent and Available/Occupied — no address line, no tenant. Turning sharing off or **Reset link** makes old links 404. On an enquiry, **Send tour on WhatsApp** sends "Hi {name}, here's a 360° tour of {property}: {link}" and logs it in the timeline.
+  - Deleting a property deletes its tour rooms and files.
 - **Photos:** JPEG/PNG/WebP/GIF up to 5 MB. The server checks the file type, size and file signature. Photos are stored **in MongoDB GridFS** (bucket `photos`), so they survive hosts with an ephemeral disk. They are served only to signed-in admins through `/api/uploads/[file]`. Deleting a photo or property removes its GridFS file. In development only, photos from before GridFS that are still in a local `uploads/` folder keep displaying. They are not migrated; re-upload them if you want them in the database.
 
 ## Deploy to Render
@@ -186,7 +194,7 @@ Then sign in on the Render URL. You can add more admins under **Settings**. Agai
 
 - **Sleep:** a free Render web service spins down after about 15 minutes without traffic. The next request wakes it, which takes up to about a minute.
 - **Notifications:** the notification check (at most every 5 minutes) only runs while someone uses the app, since there's no cron. Desktop notifications only appear while a Rentee tab is open; there's no Web Push. A sleeping service delivers nothing until it is woken.
-- **Storage:** Atlas M0 has 512 MB. Photos (up to 5 MB each, 12 per property) and expense bills (up to 10 MB each) are the main consumers.
+- **Storage:** Atlas M0 has 512 MB. Photos (up to 5 MB each, 12 per property), expense bills (up to 10 MB each) and tour photos (usually 2–5 MB per room) are the main consumers.
 - **Clock:** "today" (due dates, overdue) uses the server's timezone, which is UTC on Render. To use Indian time, add the environment variable `TZ=Asia/Kolkata`.
 
 ## Project layout
@@ -203,6 +211,8 @@ src/
   app/api/notifications/     notification poll endpoint (bell + desktop notifications)
   app/api/receipts/[id]      authenticated receipt PDF
   app/r/[token], app/p/[token]  public signed receipt / UPI pay pages (no login)
+  app/t/[token]              public virtual tour page + token-checked tour images (no login)
+  assets/sample-tour/        generated sample 360° rooms (scripts/generate-sample-tour.mjs)
   assets/fonts/              Noto Sans fonts for PDFs (OFL)
   components/                app shell (sidebar / mobile drawer), UI primitives, form fields
   lib/                       db, auth, session, money, rent, validation, whatsapp, reminders,

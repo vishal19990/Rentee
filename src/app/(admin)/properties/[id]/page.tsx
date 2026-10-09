@@ -12,6 +12,7 @@ import { Maintenance } from "@/models/Maintenance";
 import { Property } from "@/models/Property";
 import { ActionForm, ConfirmAction, FileField, SubmitButton } from "@/components/form";
 import { PropertyEnquiriesCard } from "@/components/property-enquiries-card";
+import { TourCard } from "@/components/tour-card";
 import {
   ButtonLink,
   Card,
@@ -236,6 +237,8 @@ export default async function PropertyPage({ params }: { params: Promise<{ id: s
               </ul>
             )}
           </Card>
+
+          <TourCard propertyId={id} propertyName={p.name} tour={p.tour} />
 
           <PropertyEnquiriesCard propertyId={id} />
 

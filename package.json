@@ -14,6 +14,11 @@
   },
   "dependencies": {
     "@pdf-lib/fontkit": "^1.1.1",
+    "@photo-sphere-viewer/autorotate-plugin": "^5.15.1",
+    "@photo-sphere-viewer/core": "^5.15.1",
+    "@photo-sphere-viewer/gyroscope-plugin": "^5.15.1",
+    "@photo-sphere-viewer/markers-plugin": "^5.15.1",
+    "@photo-sphere-viewer/virtual-tour-plugin": "^5.15.1",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^20.19.43",
     "@types/qrcode": "^1.5.6",
@@ -38,6 +43,7 @@
   },
   "devDependencies": {
     "dotenv": "^18.0.4",
+    "jpeg-js": "^0.4.4",
     "mongodb-memory-server": "^10.4.3",
     "tsx": "^4.23.15",
     "vitest": "^3.2.7"

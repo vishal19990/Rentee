@@ -10,6 +10,7 @@ import {
   IconFile,
   IconHome,
   IconMail,
+  IconPanorama,
   IconPhone,
   IconReceipt,
   IconUsers,
@@ -39,6 +40,7 @@ const FEATURES = [
   { icon: IconCalendar, title: "Agreements", text: "11-month agreements with one-click renewal and expiry reminders." },
   { icon: IconMail, title: "Enquiries", text: "Track every walk-in and call from first contact to tenant — or not." },
   { icon: IconWrench, title: "Maintenance", text: "Log repairs, track their status and turn costs into expenses." },
+  { icon: IconPanorama, title: "360° virtual tours", text: "Room-by-room 360° photos people can walk through from a link — fewer wasted visits." },
 ];
 
 const STEPS = [
@@ -175,7 +177,7 @@ export default async function LandingPage() {
       <section className="border-b border-slate-100 bg-white">
         <div className="mx-auto grid max-w-6xl grid-cols-2 gap-6 px-4 py-10 text-center sm:px-6 md:grid-cols-4">
           {[
-            ["12", "modules in one app"],
+            ["13", "modules in one app"],
             ["1 click", "WhatsApp reminder"],
             ["Live", "UPI pay links"],
             ["Apr–Mar", "financial-year reports"],

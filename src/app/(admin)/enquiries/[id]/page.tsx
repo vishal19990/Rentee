@@ -29,6 +29,8 @@ import { Tenant } from "@/models/Tenant";
 import { ConfirmAction } from "@/components/form";
 import { Badge, ButtonLink, Card, DetailList, EmptyState, PageHeader } from "@/components/ui";
 import { EnquiryStatusBadge } from "@/components/enquiry-status-badge";
+import { EnquiryTourButton } from "@/components/enquiry-tour-button";
+import { sharedTourOptions } from "@/lib/tour-store";
 import { IconAlert, IconCalendar, IconPencil, IconTrash } from "@/components/icons";
 import { deleteEnquiry } from "../actions";
 import {
@@ -259,6 +261,12 @@ export default async function EnquiryPage({ params }: { params: Promise<{ id: st
 
           <Card title="WhatsApp">
             <WhatsAppPanel id={id} phoneDigits={normalizePhone(e.phone)} defaultMessage={enquiryWhatsAppMessage(e.name, propertyName)} />
+            <EnquiryTourButton
+              enquiryId={id}
+              enquiryName={e.name}
+              phoneDigits={normalizePhone(e.phone)}
+              options={await sharedTourOptions(e.property ? toId(e.property) : null)}
+            />
           </Card>
 
           <Card title="Previous enquiries from this number" bodyClassName="p-0">

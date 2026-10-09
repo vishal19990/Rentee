@@ -8,6 +8,7 @@ import { asObjectId, syncRentalStatuses } from "@/lib/data";
 import { connectDB } from "@/lib/db";
 import { syncNotificationsSafe } from "@/lib/notification-sync";
 import { deletePhoto, savePhoto } from "@/lib/photo-store";
+import { deletePropertyTour } from "@/lib/tour-store";
 import { IMAGE_TYPES, parseForm, propertySchema, validateImage, type ActionState } from "@/lib/validation";
 import { Expense } from "@/models/Expense";
 import { Rental } from "@/models/Rental";
@@ -72,6 +73,7 @@ export async function deleteProperty(id: string): Promise<ActionState> {
   await Maintenance.deleteMany({ property: _id });
   await syncNotificationsSafe({ scope: { maintenanceIds: requestIds } });
   await Promise.all(property.photos.map((f) => deletePhoto(f)));
+  await deletePropertyTour(_id);
   revalidatePath("/properties");
   redirect("/properties");
 }

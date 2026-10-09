@@ -100,6 +100,10 @@ async function main() {
     for (const name of ["tenantdocuments", "documents.files", "documents.chunks", "agreements"]) {
       await db.collection(name).deleteMany({});
     }
+    // Virtual tour rooms and their photos (GridFS bucket "tours").
+    for (const name of ["tourrooms", "tours.files", "tours.chunks"]) {
+      await db.collection(name).deleteMany({});
+    }
     // Property enquiries and their timelines.
     for (const name of ["enquiries", "enquiryactivities"]) {
       await db.collection(name).deleteMany({});
@@ -266,6 +270,7 @@ async function main() {
   ]);
 
   await seedEnquiries(today, { palm: palm._id, lotus: lotus._id, cedar: cedar._id }, { tenant: rahul._id, rental: lotusRental._id });
+  await seedSampleTour(palm._id);
 
   console.log("Demo data ready: 4 properties, 4 tenants, 4 rentals, payments, maintenance requests and enquiries.");
 }
@@ -318,6 +323,21 @@ async function seedEnquiries(
     if (r.outcomeAt) acts.push({ kind: "status_change", text: `Status → ${STATUS_LABEL[r.status as keyof typeof STATUS_LABEL]}`, at: r.outcomeAt });
     await EnquiryActivity.create(acts.map((a) => ({ ...a, enquiry: e._id })));
   }
+}
+
+/** The built-in sample 360° tour (Living room, Bedroom, Kitchen) on the first demo property. */
+async function seedSampleTour(propertyId: mongoose.Types.ObjectId) {
+  const { createSampleTour } = await import("../src/lib/sample-tour");
+  const bucket = new mongoose.mongo.GridFSBucket(mongoose.connection.db!, { bucketName: "tours" });
+  const save = (bytes: Buffer, meta: { filename: string; contentType: string }) =>
+    new Promise<mongoose.Types.ObjectId>((resolve, reject) => {
+      const up = bucket.openUploadStream(meta.filename, { metadata: { contentType: meta.contentType } });
+      up.once("finish", () => resolve(up.id as mongoose.Types.ObjectId));
+      up.once("error", reject);
+      up.end(bytes);
+    });
+  const added = await createSampleTour(propertyId, save, (id) => bucket.delete(id).catch(() => {}));
+  if (added) console.log("Added the sample virtual tour to the first demo property.");
 }
 
 main()

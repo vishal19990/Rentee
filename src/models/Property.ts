@@ -19,6 +19,16 @@ const propertySchema = new Schema(
     photos: { type: [String], default: [] },
     notes: { type: String, default: "" },
     archived: { type: Boolean, default: false, index: true },
+    /** 360° virtual tour settings (the rooms themselves live in TourRoom). */
+    tour: {
+      /** Public share link /t/<token> on or off. */
+      enabled: { type: Boolean, default: false },
+      /** Bumped by "Reset link" so older share links stop working. */
+      shareVersion: { type: Number, default: 0 },
+      /** Optional embeddable external tour (Matterport, Kuula, YouTube, Google Maps). */
+      externalUrl: { type: String, default: "" },
+      startRoom: { type: Schema.Types.ObjectId, ref: "TourRoom", default: null },
+    },
   },
   { timestamps: true },
 );

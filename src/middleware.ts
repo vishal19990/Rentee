@@ -15,7 +15,8 @@ export async function middleware(req: NextRequest) {
   // Public receipt (/r/<token>) and UPI pay (/p/<token>) links: no login, but each page only
   // renders for a valid HMAC-signed token (checked there). The path is passed on so their
   // not-found page can tell an expired link from an invalid one.
-  if (pathname.startsWith("/r/") || pathname.startsWith("/p/")) {
+  // Shared virtual tours (/t/<token>, plus its token-checked images) work the same way.
+  if (pathname.startsWith("/r/") || pathname.startsWith("/p/") || pathname.startsWith("/t/")) {
     const headers = new Headers(req.headers);
     headers.set("x-rentee-path", pathname);
     return NextResponse.next({ request: { headers } });

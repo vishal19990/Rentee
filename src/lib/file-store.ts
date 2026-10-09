@@ -7,8 +7,9 @@ import { connectDB } from "./db";
  * MongoDB so hosts with an ephemeral disk keep them. Each bucket is private; files are only
  * ever served through authenticated route handlers.
  *   - "bills": expense bill attachments (F2)
+ *   - "tours": 360° virtual tour room photos and thumbnails
  */
-export type FileBucket = "bills";
+export type FileBucket = "bills" | "tours";
 
 async function bucket(name: FileBucket) {
   await connectDB();

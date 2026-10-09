@@ -2,6 +2,7 @@
  * HMAC-signed tokens for the public, no-login pages:
  *   /r/<token>  rent receipt (one payment; does not expire)
  *   /p/<token>  UPI pay link (one rental; expires PAY_LINK_DAYS after it was made)
+ *   /t/<token>  virtual tour (one property; revoked by turning sharing off or resetting the link)
  *
  * Token = "<payload>.<signature>", where payload is a short dot-separated string and the
  * signature is HMAC-SHA256 (truncated to 128 bits, base64url) under a key derived from
@@ -102,4 +103,24 @@ export function verifyPayToken(token: string, now: Date = new Date(), secret?: U
   const expiresDay = parseInt(rawExp, 36);
   if (utcDay(now) > expiresDay) return { ok: false, reason: "expired" };
   return { ok: true, link: { kind: "pay", rentalId, through, expiresDay } };
+}
+
+/**
+ * Virtual tour share link: /t/<token>, one property, no expiry. `version` is the property's
+ * tour.shareVersion; "Reset link" bumps it so every older token stops working.
+ */
+export type TourLink = { kind: "tour"; propertyId: string; version: number };
+
+export function signTourToken(propertyId: string, version: number, secret?: Uint8Array): string {
+  if (!OBJECT_ID.test(propertyId)) throw new Error("Invalid property id");
+  if (!Number.isInteger(version) || version < 0) throw new Error("Invalid share version");
+  return seal(`t.${propertyId}.${version.toString(36)}`, secret);
+}
+
+export function verifyTourToken(token: string, secret?: Uint8Array): VerifyResult<TourLink> {
+  const parts = open(token, secret);
+  if (!parts || parts.length !== 3 || parts[0] !== "t" || !OBJECT_ID.test(parts[1]) || !/^[0-9a-z]{1,8}$/.test(parts[2])) {
+    return { ok: false, reason: "invalid" };
+  }
+  return { ok: true, link: { kind: "tour", propertyId: parts[1], version: parseInt(parts[2], 36) } };
 }

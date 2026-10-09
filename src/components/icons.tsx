@@ -140,6 +140,16 @@ export const IconImage = (p: IconProps) => (
   </Icon>
 );
 
+/** 360° view (virtual tours). */
+export const IconPanorama = (p: IconProps) => (
+  <Icon {...p}>
+    <ellipse cx="12" cy="12" rx="9" ry="4" />
+    <path d="M12 3a9 9 0 0 1 0 18" />
+    <path d="M12 3a9 9 0 0 0 0 18" />
+    <path d="m15 15.5 2 .8-.8 2" />
+  </Icon>
+);
+
 export const IconMapPin = (p: IconProps) => (
   <Icon {...p}>
     <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z" />

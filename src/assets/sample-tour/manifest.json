@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "width": 4096,
+  "height": 2048,
+  "start": "living",
+  "rooms": [
+    {
+      "key": "living",
+      "name": "Living room",
+      "image": "living-room.jpg",
+      "thumbnail": "living-room-thumb.jpg",
+      "width": 4096,
+      "height": 2048,
+      "initialYaw": 0,
+      "links": [
+        {
+          "to": "bedroom",
+          "yaw": 1.4158,
+          "pitch": -0.1532
+        },
+        {
+          "to": "kitchen",
+          "yaw": -1.2537,
+          "pitch": -0.1474
+        }
+      ]
+    },
+    {
+      "key": "bedroom",
+      "name": "Bedroom",
+      "image": "bedroom.jpg",
+      "thumbnail": "bedroom-thumb.jpg",
+      "width": 4096,
+      "height": 2048,
+      "initialYaw": 0,
+      "links": [
+        {
+          "to": "living",
+          "yaw": -1.5708,
+          "pitch": -0.2141
+        }
+      ]
+    },
+    {
+      "key": "kitchen",
+      "name": "Kitchen",
+      "image": "kitchen.jpg",
+      "thumbnail": "kitchen-thumb.jpg",
+      "width": 4096,
+      "height": 2048,
+      "initialYaw": 0,
+      "links": [
+        {
+          "to": "living",
+          "yaw": 1.5708,
+          "pitch": -0.2337
+        }
+      ]
+    }
+  ]
+}
