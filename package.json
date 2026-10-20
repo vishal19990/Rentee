@@ -9,6 +9,7 @@
     "build": "next build",
     "start": "next start -H 0.0.0.0",
     "seed": "node scripts/local-mongo.mjs tsx scripts/seed.ts",
+    "cleanup:demo": "tsx scripts/cleanup-demo.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
