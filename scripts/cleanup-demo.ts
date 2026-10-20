@@ -4,6 +4,7 @@
  *
  *   npm run cleanup:demo              # dry run: shows what would be removed, changes nothing
  *   npm run cleanup:demo -- --confirm # actually removes it
+ *   add --all-enquiries               # also remove every enquiry, not only seeded ones
  *
  * Demo records are recognised by the exact names `scripts/seed.ts` uses. Everything that hangs
  * off a demo property or tenant (rentals, payments, charges, rent changes, deposits, agreements,
@@ -22,6 +23,8 @@ dotenv.config({ path: path.join(process.cwd(), ".env.local"), quiet: true });
 dotenv.config({ path: path.join(process.cwd(), ".env"), quiet: true });
 
 const CONFIRM = process.argv.includes("--confirm");
+/** Also remove every enquiry (and its timeline), not just the seeded ones. */
+const ALL_ENQUIRIES = process.argv.includes("--all-enquiries");
 
 const DEMO_PROPERTIES = ["Palm Grove Villa", "Lotus Apartment 3B", "Cedar House", "Harbor View Studio"];
 const DEMO_TENANTS = [
@@ -71,10 +74,15 @@ const maintenanceIds = ids(maintenance);
 
 // Seeded enquiries (by name, created with demo properties) — a real enquiry with the same name
 // but on a real property, or with no property, is only treated as demo if its phone matches seed.
-const enquiries = await find("enquiries", {
-  name: { $in: DEMO_ENQUIRIES },
-  $or: [{ property: { $in: propertyIds } }, { convertedTenant: { $in: tenantIds } }, { createdBy: null }],
-});
+const enquiries = await find(
+  "enquiries",
+  ALL_ENQUIRIES
+    ? {}
+    : {
+        name: { $in: DEMO_ENQUIRIES },
+        $or: [{ property: { $in: propertyIds } }, { convertedTenant: { $in: tenantIds } }, { createdBy: null }],
+      },
+);
 const enquiryIds = ids(enquiries);
 
 const tourRooms = await find("tourrooms", { $or: [{ property: { $in: propertyIds } }, { sample: true }] });
