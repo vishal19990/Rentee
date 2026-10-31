@@ -1,5 +1,5 @@
 ---
-title: 'Rentee — deposit paid later / in instalments'
+title: 'Rentee — deposit advance and part payments'
 type: 'feature'
 created: '2026-10-31'
 status: 'in-progress'
@@ -13,63 +13,59 @@ context:
 
 ## Intent
 
-**Problem:** Tenants often pay the security deposit later, in parts. Today creating a rental with a deposit records the whole amount as received at move-in, so a part-paid deposit can't be represented or chased.
+**Problem:** Tenants don't pay the full security deposit up front. They pay an **advance** — some at booking (before move-in) and/or on move-in day — and the **balance later in parts, whenever they can**. Today creating a rental records the whole deposit as received at move-in, so this can't be represented.
 
-**Approach:** Separate the **agreed** deposit (Rental.deposit) from what was **received** (DepositEntry `received` entries). Let the admin record how much was paid at move-in (full, partial, or nothing) and add later instalments, see the pending amount everywhere it matters, remind the tenant, and issue a receipt per instalment. Human delegated design decisions.
+**Approach:** Keep `Rental.deposit` as the **agreed** deposit and record every deposit payment as a `received` DepositEntry with its real date. Payments dated on or before the move-in date are labelled **Advance**; later ones **Part payment**. The app displays **Deposit quoted** (total deposit quoted to the customer), **Advance paid**, **Paid later** (towards the deposit) and **Balance**; these exact labels are used on the deposit card, tenant page and ledger report (human: "display total deposit quoted, advance paid, and amount paid later towards deposit"). No schedule, no due dates, no deposit notifications. (Human clarified: "not instalments — consider this as advance, not full deposit"; advance is paid before move-in and also on move-in day.)
 
 **Decisions:**
-- **Rental fields:** `deposit` stays the agreed amount. New optional `depositPaidAtMoveIn` (minor units, 0 ≤ x ≤ deposit) and `depositDueDate` (date, optional, ≥ move-in). Create form: "Deposit paid at move-in" defaults to the full deposit; admin can lower it or enter 0. The initial `received` entry (source "initial") is created with `depositPaidAtMoveIn` instead of `deposit`, and none when it is 0. **Rentals without `depositPaidAtMoveIn` (all existing data) behave exactly as today** (full deposit at move-in).
-- **Pending** = max(deposit − total received, 0). Total received counts all `received` entries (deductions/refunds don't change pending). Pure helper in `src/lib/deposit.ts` (`depositStatus(agreed, entries)` → {agreed, received, pending, held, state: none|pending|paid|over}).
-- **Record deposit payment:** Deposit card action (kind `received`, amount defaults to pending, date default today, method cash|upi|bank_transfer|cheque|other, optional note). Validation: amount > 0; amount ≤ pending → else error "Only ₹X of the deposit is pending" (when pending is 0: "The deposit is fully paid"). To accept more, the admin edits the agreed deposit first. Existing deduction/refund rules unchanged (held never negative). Entries stay append-only.
-- **Deposit card UI:** Agreed / Received / Pending / Held figures, progress bar, due date (overdue in red when past and pending > 0), instalment list with method and receipt link, "Record deposit payment", "Remind on WhatsApp" (when pending > 0 and tenant phone valid; message: "Hi {tenant}, a friendly reminder that {amount} of your security deposit for {property} is pending{dueClause}. Thank you!" where dueClause = " (due {date})" if set). Logs a ReminderLog with kind `deposit`.
-- **Deposit receipts:** every `received` deposit entry gets a receipt number `DEP/<FY>/<seq>` (separate counter `deposit-receipt:<FY>`, assigned on creation; existing entries numbered lazily when first opened). Reuse the receipt page/PDF/share-link infrastructure (`/r/<token>` with a kind discriminator), titled "Security deposit receipt", showing agreed, this instalment, total received, pending. Same privacy rules as rent receipts.
-- **Visibility:** rentals list and rental header badge "Deposit pending ₹X"; tenant page shows it; dashboard card "Deposits pending" (count, total, top 5 with links); tenant ledger report (screen, Excel, PDF) deposit section shows agreed / received / pending. FY summary unchanged (deposits are not income).
-- **Notification** `deposit_pending` (reminder): active rental, pending > 0, depositDueDate set and ≤ today; one per rental+dueDate; resolved when pending reaches 0 or due date changes or rental moves out. Rentals with no due date get no notification (still shown on dashboard card).
-- **Bulk reminders page:** out of scope (rent only).
+- **Create rental form:** "Deposit quoted" (existing field, relabelled from "Deposit") + **"Advance received"** (amount, default = agreed deposit for backwards-compatible convenience, may be lower or 0) + **"Advance date"** (default today; may be before the move-in date, never after today). Creates one `received` entry (source "initial") with that amount and date; none when 0. New field `Rental.depositAdvance` records that this rental uses the advance flow. **Rentals without it (all existing data) behave exactly as today.**
+- **Deposit card:** shows **Deposit quoted**, **Advance paid** (sum of received entries dated ≤ move-in date), **Paid later** (received entries after move-in), **Balance** = max(agreed − total received, 0), Held (received − deductions − refunds), with a progress bar. Lists every entry with date, label (Advance / Part payment / Deduction / Refund), method, note and receipt link.
+- **"Add deposit payment"** on the card: amount (default = balance), date (default today; any date ≥ 60 days before move-in and ≤ today), method cash|upi|bank_transfer|cheque|other, note. Label derived from date (≤ move-in → Advance). Validation: amount > 0 and ≤ balance → else "Only ₹X of the deposit is still due" (balance 0 → "The deposit is fully paid"). To take more, raise the agreed deposit first (edit rental; agreed can't go below total received: "Agreed deposit can't be less than ₹X already received"). Entries remain append-only; deductions/refunds unchanged.
+- **Receipts:** each received entry has a "Receipt" (number `DEP/<FY>/<seq>` from its own counter, assigned on creation, lazily for older entries), reusing the rent receipt page/PDF/WhatsApp share link infrastructure with a deposit kind: title "Security deposit receipt", shows Advance/Part payment, this amount, total received, balance. Same privacy rules as rent receipts.
+- **Visibility:** "Deposit balance ₹X" badge on the rentals list and rental header when balance > 0; tenant page shows it; dashboard card "Deposit balances" (count, total, up to 5 rentals with links), hidden when none; tenant ledger report (screen/Excel/PDF) deposit section shows agreed, advance, paid later, balance. Deposits never count as rent income.
+- **WhatsApp:** "Remind on WhatsApp" on the deposit card when balance > 0: "Hi {tenant}, a gentle reminder that {balance} of the security deposit for {property} is still due. Thank you!" Logged as a ReminderLog (kind `deposit`). No automatic notifications.
 
-**Always:** money in minor units; zod validation with field errors; `requireUser` on all admin actions; responsive at 400px; idempotent notification keys; no changes to existing data on deploy (lazy behaviour only).
+**Always:** money in minor units; zod validation with field errors; `requireUser` on admin actions; responsive at 400px; existing data untouched on deploy.
 
-**Never:** no deletion/edit of deposit entries; deposits never counted as rent income; do not reset or seed the user's database.
+**Never:** no due dates or instalment schedules; no deposit notifications; no editing/deleting deposit entries; do not reset or seed the user's database.
 
 ## I/O & Edge-Case Matrix
 
 | Scenario | Input / State | Expected Output / Behavior | Error Handling |
 |----------|--------------|---------------------------|----------------|
-| Nothing at move-in | deposit 50,000, paid at move-in 0 | no initial entry; pending 50,000 | N/A |
-| Partial at move-in | deposit 50,000, paid 20,000 | initial received 20,000; pending 30,000 | paid > deposit → field error |
-| Instalment | pending 30,000, record 10,000 | pending 20,000, receipt DEP/2026-27/0001 | N/A |
-| Over-payment | pending 20,000, record 25,000 | not saved | "Only ₹20,000 of the deposit is pending" |
-| Fully paid | pending 0, record 1,000 | not saved | "The deposit is fully paid" |
-| Legacy rental | existing rental, deposit 40,000, no depositPaidAtMoveIn | received 40,000 at move-in as before; pending 0 | N/A |
-| Deduction after partial | received 20,000, deduction 5,000 | held 15,000, pending stays 30,000 | deduction > held → existing error |
-| Overdue notification | pending > 0, due date yesterday | one `deposit_pending`; repeat sync no duplicate | N/A |
-| Resolved | last instalment clears pending | notification resolved, badge gone | N/A |
-| Agreed raised | edit deposit 50,000 → 60,000 with 50,000 received | pending 10,000 | agreed below received → field error "Agreed deposit can't be less than received ₹X" |
+| Booking advance | agreed 50,000; advance 10,000 dated 10 days before move-in | entry labelled Advance; balance 40,000 | advance > agreed → field error |
+| Move-in advance | then add 5,000 dated move-in day | labelled Advance; Advance total 15,000; balance 35,000 | N/A |
+| Part payment | add 20,000 dated after move-in | labelled Part payment; Paid later 20,000; balance 15,000 | N/A |
+| Too much | balance 15,000; add 20,000 | not saved | "Only ₹15,000 of the deposit is still due" |
+| Fully paid | balance 0; add 1,000 | not saved | "The deposit is fully paid" |
+| No advance | advance 0 | no entry; balance = agreed | N/A |
+| Future date | payment dated tomorrow | not saved | date field error |
+| Legacy rental | existing rental, no depositAdvance | full deposit received at move-in as before; balance 0; no badge | N/A |
+| Agreed lowered | received 30,000; edit agreed to 25,000 | not saved | "Agreed deposit can't be less than ₹30,000 already received" |
+| Deduction | received 30,000, deduction 5,000 | held 25,000; balance unchanged | deduction > held → existing error |
 
 </frozen-after-approval>
 
 ## Code Map
 
-- `src/lib/deposit.ts` (+ tests in `src/lib/money-features.test.ts` or new `deposit.test.ts`) -- pure status/validation.
-- `src/lib/deposit-store.ts` -- `ensureDeposit`/initial entry uses `depositPaidAtMoveIn`; `addDepositEntry` adds pending check for `received`.
-- `src/models/Rental.ts`, `src/models/DepositEntry.ts` (add method, receiptNo), `src/models/ReminderLog.ts` (kind).
-- `src/app/(admin)/rentals/{actions.ts,ledger-actions.ts,rental-form.tsx,[id]/page.tsx,page.tsx}` -- form fields, card, badge.
-- Receipts: `src/lib/receipts*.ts`, `src/lib/receipt-pdf.ts`, `src/lib/signed-links.ts`, `src/app/r/[token]/*`, `src/app/(admin)/payments/[id]/receipt` -- extend with deposit kind.
-- `src/lib/notifications.ts`, `src/lib/notification-sync.ts`, `notification-list.tsx` -- new type.
-- `src/app/(admin)/dashboard/page.tsx` + new `src/components/deposits-pending-card.tsx`; tenants/[id] page; reports ledger (`src/lib/reports*.ts`, `report-pdf.ts`, `reports-xlsx.ts`).
-- README.
+- `src/lib/deposit.ts` (+ tests) -- pure status: agreed/advance/paidLater/balance/held, labels, validation.
+- `src/lib/deposit-store.ts` -- initial entry from advance amount/date when `depositAdvance` set; balance check for `received`.
+- `src/models/Rental.ts` (`depositAdvance`), `src/models/DepositEntry.ts` (method, receiptNo), `src/models/ReminderLog.ts` (kind).
+- `src/app/(admin)/rentals/{actions.ts,ledger-actions.ts,rental-form.tsx,[id]/page.tsx,page.tsx}` -- form, card, badge.
+- Receipts: `src/lib/receipts*.ts`, `receipt-pdf.ts`, `signed-links.ts`, `src/app/r/[token]/*`, admin receipt page -- add deposit kind.
+- Dashboard card (new component), tenants/[id], reports ledger (`reports*.ts`, `report-pdf.ts`, `reports-xlsx.ts`), README.
 
 ## Tasks & Acceptance
 
 **Execution:**
 - [ ] pure helpers + tests for every matrix row
-- [ ] model fields, create/edit form + validation, initial entry change, instalment action with pending check
-- [ ] deposit card UI, WhatsApp deposit reminder, deposit receipts (page, PDF, share link)
-- [ ] badges, dashboard card, tenant page, ledger report, notification type, README
+- [ ] model fields, create/edit form + validation, initial advance entry, add-payment action with balance check
+- [ ] deposit card UI, WhatsApp balance reminder, deposit receipts
+- [ ] badges, dashboard card, tenant page, ledger report, README
 
 **Acceptance Criteria:**
-- Given existing rentals in the database, when the app loads after deploy, then their deposit figures are unchanged and nothing shows as pending.
-- Given a rental created with ₹0 paid at move-in and a due date in the past, when the dashboard loads, then it appears under "Deposits pending" and a `deposit_pending` notification exists.
+- Given existing rentals, when the app loads after deploy, then their deposit figures are unchanged and no balance badge appears.
+- Given a rental with ₹10,000 advance at booking and ₹5,000 on move-in of a ₹50,000 deposit, when its page is opened, then it shows Advance ₹15,000, Paid later ₹0, Balance ₹35,000.
 
 ## Implementation Notes
 
