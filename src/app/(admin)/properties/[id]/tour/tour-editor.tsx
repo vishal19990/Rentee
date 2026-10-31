@@ -230,7 +230,7 @@ function RoomRow({
       <div className="flex items-center gap-3">
         <button type="button" onClick={onSelect} className="shrink-0 overflow-hidden rounded-lg ring-1 ring-slate-200" aria-label={`Show ${room.name}`}>
           {/* eslint-disable-next-line @next/next/no-img-element -- authenticated route */}
-          <img src={room.thumb} alt="" className="h-10 w-20 object-cover" />
+          <img src={room.thumb} alt="" loading="lazy" decoding="async" className="h-10 w-20 object-cover" />
         </button>
         <button type="button" onClick={onSelect} className="min-w-0 flex-1 text-left">
           <span className="block truncate text-sm font-medium text-slate-900">{room.name}</span>

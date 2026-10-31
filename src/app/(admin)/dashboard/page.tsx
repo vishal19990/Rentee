@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
+import { SkeletonCard } from "@/components/skeleton";
 import { requireUser } from "@/lib/auth";
 import { loadRentals, toId } from "@/lib/data";
 import { connectDB } from "@/lib/db";
@@ -258,11 +260,16 @@ export default async function DashboardPage() {
           )}
         </Card>
 
-        <AgreementsExpiringCard rentals={rentals} today={today} />
+        {/* These cards run their own queries: stream them in so the rest of the dashboard shows first. */}
+        <Suspense fallback={<SkeletonCard rows={2} />}>
+          <AgreementsExpiringCard rentals={rentals} today={today} />
+        </Suspense>
 
         <DepositBalancesCard rentals={rentals} />
 
-        <EnquiriesDashboardCard today={today} />
+        <Suspense fallback={<SkeletonCard rows={3} />}>
+          <EnquiriesDashboardCard today={today} />
+        </Suspense>
       </div>
     </>
   );

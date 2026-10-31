@@ -133,7 +133,7 @@ export default async function PropertyPage({ params }: { params: Promise<{ id: s
                   <figure key={f} className="group relative overflow-hidden rounded-xl bg-slate-100 ring-1 ring-slate-200">
                     <a href={photoUrl(f)} target="_blank" rel="noreferrer">
                       {/* eslint-disable-next-line @next/next/no-img-element -- served by an authenticated route */}
-                      <img src={photoUrl(f)} alt={`${p.name} photo`} className="aspect-[4/3] w-full object-cover" />
+                      <img src={photoUrl(f)} alt={`${p.name} photo`} loading="lazy" decoding="async" className="aspect-[4/3] w-full object-cover" />
                     </a>
                     <figcaption className="flex justify-end p-1.5">
                       <ConfirmAction

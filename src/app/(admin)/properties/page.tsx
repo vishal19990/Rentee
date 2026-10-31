@@ -96,7 +96,7 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
               <div className="relative aspect-[16/9] bg-gradient-to-br from-slate-100 to-slate-200">
                 {p.photo ? (
                   // eslint-disable-next-line @next/next/no-img-element -- served by an authenticated route
-                  <img src={photoUrl(p.photo)} alt="" className="size-full object-cover transition group-hover:scale-[1.02]" />
+                  <img src={photoUrl(p.photo)} alt="" loading="lazy" decoding="async" className="size-full object-cover transition group-hover:scale-[1.02]" />
                 ) : (
                   <div className="grid size-full place-items-center text-slate-400">
                     <IconHome className="size-10" />

@@ -37,7 +37,7 @@ export async function TourCard({ propertyId, propertyName, tour }: { propertyId:
           {start ? (
             <a href={`/properties/${propertyId}/tour/view`} className="block overflow-hidden rounded-xl ring-1 ring-slate-200">
               {/* eslint-disable-next-line @next/next/no-img-element -- authenticated route */}
-              <img src={adminRoomUrls(start).thumb} alt={`${propertyName} tour cover`} className="aspect-[2/1] w-full object-cover" />
+              <img src={adminRoomUrls(start).thumb} alt={`${propertyName} tour cover`} loading="lazy" decoding="async" className="aspect-[2/1] w-full object-cover" />
             </a>
           ) : null}
           <p className="text-sm text-slate-600">
