@@ -9,6 +9,7 @@ import {
   agreedDepositError,
   depositEntryError,
   depositEntryLabel,
+  depositLedgerError,
   depositPaymentError,
   depositPaymentLabel,
   depositReminderMessage,
@@ -197,5 +198,31 @@ describe("advance date default", () => {
     const res = rentalCreateSchema(TODAY).safeParse(rentalForm({ moveInDate: "2026-11-15", depositAdvance: "10000" }));
     expect(res.success).toBe(true);
     if (res.success) expect(res.data.advance.date).toBe(TODAY);
+  });
+});
+
+describe("editing and deleting deposit entries", () => {
+  const advanceRental = { deposit: R(50000), advanceFlow: true };
+  const legacyRental = { deposit: R(40000), advanceFlow: false };
+
+  it("allows an edit that keeps the ledger valid", () => {
+    expect(depositLedgerError([received("2026-10-10", R(30000)), { kind: "deduction", amount: R(5000) }], advanceRental)).toBeNull();
+  });
+
+  it("refuses an edit that takes total received above the deposit quoted (advance flow)", () => {
+    expect(depositLedgerError([received("2026-10-10", R(30000)), received("2026-10-25", R(25000))], advanceRental)).toBe(
+      "Total received (₹55,000) can't be more than the deposit quoted (₹50,000)",
+    );
+  });
+
+  it("older rentals are not capped at the deposit quoted", () => {
+    expect(depositLedgerError([received("2026-01-01", R(45000))], legacyRental)).toBeNull();
+  });
+
+  it("refuses deleting a payment that deductions or refunds already used", () => {
+    // received 20,000 then refunded 15,000; deleting the 20,000 leaves held at -15,000
+    expect(depositLedgerError([{ kind: "refund", amount: R(15000) }], advanceRental)).toBe(
+      "Deductions and refunds (₹15,000) would be more than the deposit received (₹0)",
+    );
   });
 });

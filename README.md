@@ -102,7 +102,7 @@ Copy `.env.example` to `.env.local` and adjust:
     - Deposits are never counted as rent income.
   - Rentals created before advances existed keep their behaviour: the whole deposit is a "received" entry dated at move-in (rentals from before the ledger get theirs the first time they're opened), the balance is always 0 and they never show a badge.
   - The held balance can never go negative. A deduction or refund larger than the balance is refused ("Cannot exceed held deposit ₹20,000"), and the check is atomic, so two refunds at once can't overdraw it.
-  - Entries are permanent: there's no edit or delete. Correct a mistake with a new entry. A rental with manual deposit entries can't be deleted.
+  - Entries can be edited (amount, date, method or reason; not their type) or deleted from the Deposit card. A change is refused if it would leave the held deposit below zero or, on advance-flow rentals, take the total received above the deposit quoted. Deleting the opening entry is remembered, so it isn't re-created. A rental with manual deposit entries can't be deleted.
   - After a move-out is recorded, the Deposit card asks you to settle the deposit: record deductions, then refund the balance.
   - Editing a rental's deposit field only changes the agreed amount (deposit quoted). Record later money in or out in the Deposit card.
 - **Expenses & profit:** `/expenses` lists what you spend, filtered by financial year, property (or **General**, for expenses not tied to a property) and category. The categories are repair, maintenance, property tax, society charges, electricity, water, insurance, loan interest and other.

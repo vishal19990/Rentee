@@ -5,6 +5,7 @@ import {
   agreedDepositError,
   depositEntryError,
   depositEntryLabel,
+  depositLedgerError,
   depositPaymentError,
   depositStatus,
   depositSummary,
@@ -31,7 +32,9 @@ function isDuplicateKey(err: unknown): boolean {
  */
 export async function ensureDepositLedger(rentalId: string | Types.ObjectId): Promise<void> {
   await connectDB();
-  const rental = await Rental.findById(rentalId).select("deposit moveInDate depositHeld depositAdvance depositReceived").lean();
+  const rental = await Rental.findById(rentalId)
+    .select("deposit moveInDate depositHeld depositAdvance depositReceived depositInitialRemoved")
+    .lean();
   if (!rental) return;
   const initialised = typeof rental.depositHeld === "number";
   // Advance-flow rentals open the ledger with the advance taken at creation (none when 0);
@@ -40,7 +43,11 @@ export async function ensureDepositLedger(rentalId: string | Types.ObjectId): Pr
   const initialAmount = adv ? adv.amount : rental.deposit;
 
   let created = false;
-  if (initialAmount > 0 && !(initialised && (await DepositEntry.exists({ rental: rental._id, source: "initial" })))) {
+  if (
+    initialAmount > 0 &&
+    !rental.depositInitialRemoved &&
+    !(initialised && (await DepositEntry.exists({ rental: rental._id, source: "initial" })))
+  ) {
     await DepositEntry.init(); // the partial unique index makes the upsert race-safe
     try {
       const res = await DepositEntry.updateOne(
@@ -197,6 +204,53 @@ export async function addDepositEntry(
     throw err;
   }
   if (entry.kind === "received") await ensureDepositReceiptNo(id);
+  return null;
+}
+
+/**
+ * Edits or deletes one ledger entry (`patch` null = delete). The ledger as it would be
+ * afterwards is validated (held ≥ 0; advance-flow: received ≤ deposit quoted), then the change
+ * is written and the cached guards are recomputed from the ledger. Returns an error message
+ * (for the amount field) or null. Not atomic against a simultaneous new entry on the same
+ * rental — acceptable for a single landlord editing their own ledger.
+ */
+export async function changeDepositEntry(
+  rentalId: Types.ObjectId,
+  entryId: Types.ObjectId,
+  patch: { amount: number; date: string; reason: string; method?: DepositMethod | null } | null,
+): Promise<string | null> {
+  await ensureDepositLedger(rentalId);
+  const [rental, rows] = await Promise.all([
+    Rental.findById(rentalId).select("deposit depositAdvance").lean(),
+    DepositEntry.find({ rental: rentalId }).select("kind amount source").lean(),
+  ]);
+  const target = rows.find((e) => e._id.equals(entryId));
+  if (!rental || !target) return "Deposit entry not found.";
+  const next = patch
+    ? rows.map((e) => (e._id.equals(entryId) ? { kind: e.kind, amount: patch.amount } : e))
+    : rows.filter((e) => !e._id.equals(entryId));
+  const error = depositLedgerError(next, { deposit: rental.deposit, advanceFlow: !!rental.depositAdvance });
+  if (error) return error;
+
+  if (patch) {
+    const set: Record<string, unknown> = { amount: patch.amount, date: dateFromISO(patch.date), reason: patch.reason };
+    if (target.kind === "received") set.method = patch.method ?? null;
+    await DepositEntry.updateOne({ _id: entryId, rental: rentalId }, { $set: set });
+  } else {
+    await DepositEntry.deleteOne({ _id: entryId, rental: rentalId });
+    // Keep a deleted opening entry from being re-created on the next read.
+    if (target.source === "initial") await Rental.updateOne({ _id: rentalId }, { $set: { depositInitialRemoved: true } });
+  }
+
+  const summary = depositSummary(await DepositEntry.find({ rental: rentalId }).select("kind amount").lean());
+  await Rental.updateOne(
+    { _id: rentalId },
+    {
+      $set: rental.depositAdvance
+        ? { depositHeld: Math.max(summary.held, 0), depositReceived: summary.received }
+        : { depositHeld: Math.max(summary.held, 0) },
+    },
+  );
   return null;
 }
 

@@ -38,6 +38,11 @@ const rentalSchema = new Schema(
      * can never take more than the agreed deposit. See addDepositEntry in lib/deposit-store.ts.
      */
     depositReceived: { type: Number, min: 0 },
+    /**
+     * Set when the admin deleted the ledger's opening ("initial") entry, so ensureDepositLedger
+     * doesn't re-create it from the deposit / advance fields.
+     */
+    depositInitialRemoved: { type: Boolean, default: false },
     dueDay: { type: Number, required: true, min: 1, max: 28, default: 1 },
     status: { type: String, enum: ["active", "moved_out"], required: true, default: "active", index: true },
   },

@@ -4,14 +4,15 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { asObjectId, syncRentalStatuses } from "@/lib/data";
 import { connectDB } from "@/lib/db";
-import { addDepositEntry, addDepositPayment, loadDeposit } from "@/lib/deposit-store";
-import { depositPaymentLabel, depositReminderMessage } from "@/lib/deposit";
+import { addDepositEntry, addDepositPayment, changeDepositEntry, loadDeposit } from "@/lib/deposit-store";
+import { depositPaymentLabel, depositReminderMessage, type DepositMethod } from "@/lib/deposit";
 import { formatMoneyShort } from "@/lib/money";
 import { formatMonth, localToday, monthOf, payableMonths, toISODate } from "@/lib/rent";
 import { syncNotificationsSafe } from "@/lib/notification-sync";
 import { chargeSchema, depositEntrySchema, depositPaymentSchema, parseForm, rentChangeSchema, type ActionState } from "@/lib/validation";
 import { NO_PHONE_TOOLTIP, normalizePhone } from "@/lib/whatsapp";
 import { Charge } from "@/models/Charge";
+import { DepositEntry } from "@/models/DepositEntry";
 import { Property } from "@/models/Property";
 import { ReminderLog } from "@/models/ReminderLog";
 import { RentChange } from "@/models/RentChange";
@@ -143,6 +144,54 @@ export async function recordDepositPayment(id: string, _prev: ActionState, fd: F
   revalidatePath("/dashboard");
   revalidatePath(`/tenants/${String(rental.tenant)}`);
   return { ok: true, message: `${depositPaymentLabel(parsed.data.date, moveInDate)} of ${formatMoneyShort(parsed.data.amount)} recorded.` };
+}
+
+function afterDepositChange(id: string, rental: { tenant: unknown }) {
+  revalidatePath(`/rentals/${id}`);
+  revalidatePath("/rentals");
+  revalidatePath("/dashboard");
+  revalidatePath(`/tenants/${String(rental.tenant)}`);
+}
+
+/** Edits a deposit ledger entry (amount, date, method / reason). Its kind can't change. */
+export async function editDepositEntry(id: string, _prev: ActionState, fd: FormData): Promise<ActionState> {
+  await requireUser();
+  const found = await loadRental(id);
+  if (!found) return NOT_FOUND;
+  const { _id, rental } = found;
+  const entryId = asObjectId(String(fd.get("entryId") ?? ""));
+  const entry = entryId ? await DepositEntry.findOne({ _id: entryId, rental: _id }).select("kind").lean() : null;
+  if (!entryId || !entry) return { ok: false, message: "Deposit entry not found." };
+
+  let patch: { amount: number; date: string; reason: string; method?: DepositMethod | null };
+  if (entry.kind === "received") {
+    const parsed = parseForm(depositPaymentSchema({ moveInDate: toISODate(rental.moveInDate), today: localToday() }), fd);
+    if (!parsed.success) return parsed.state;
+    patch = { amount: parsed.data.amount, date: parsed.data.date, reason: parsed.data.note, method: parsed.data.method };
+  } else {
+    fd.set("kind", entry.kind);
+    const parsed = parseForm(depositEntrySchema, fd);
+    if (!parsed.success) return parsed.state;
+    patch = { amount: parsed.data.amount, date: parsed.data.date, reason: parsed.data.reason };
+  }
+
+  const error = await changeDepositEntry(_id, entryId, patch);
+  if (error) return { ok: false, message: error, fieldErrors: { amount: [error] } };
+  afterDepositChange(id, rental);
+  return { ok: true, message: "Deposit entry updated." };
+}
+
+/** Deletes a deposit ledger entry (refused if the remaining ledger would be invalid). */
+export async function deleteDepositEntry(id: string, _prev: ActionState, fd: FormData): Promise<ActionState> {
+  await requireUser();
+  const found = await loadRental(id);
+  if (!found) return NOT_FOUND;
+  const entryId = asObjectId(String(fd.get("entryId") ?? ""));
+  if (!entryId) return { ok: false, message: "Deposit entry not found." };
+  const error = await changeDepositEntry(found._id, entryId, null);
+  if (error) return { ok: false, message: error };
+  afterDepositChange(id, found.rental);
+  return { ok: true, message: "Deposit entry deleted." };
 }
 
 export type LogDepositReminderResult = { ok: true; sentAt: string } | { ok: false; message: string };

@@ -99,6 +99,25 @@ export function depositPaymentError(balance: number, amount: number): string | n
   return null;
 }
 
+/**
+ * Checks a deposit ledger as it would be after editing or deleting an entry: the held deposit
+ * can't go below zero, and (advance-flow rentals) the total received can't exceed the deposit
+ * quoted. Returns an error message, or null when the ledger is valid.
+ */
+export function depositLedgerError(
+  entries: DepositEntryLike[],
+  rental: { deposit: number; advanceFlow: boolean },
+): string | null {
+  const s = depositSummary(entries);
+  if (s.held < 0) {
+    return `Deductions and refunds (${formatMoneyShort(s.deducted + s.refunded)}) would be more than the deposit received (${formatMoneyShort(s.received)})`;
+  }
+  if (rental.advanceFlow && s.received > rental.deposit) {
+    return `Total received (${formatMoneyShort(s.received)}) can't be more than the deposit quoted (${formatMoneyShort(rental.deposit)})`;
+  }
+  return null;
+}
+
 /** Error when the agreed deposit would drop below what has already been received, else null. */
 export function agreedDepositError(agreed: number, received: number): string | null {
   return agreed < received ? `Agreed deposit can't be less than ${formatMoneyShort(received)} already received` : null;

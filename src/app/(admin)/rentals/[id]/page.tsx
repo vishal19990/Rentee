@@ -19,7 +19,7 @@ import { Payment } from "@/models/Payment";
 import { Property } from "@/models/Property";
 import { RentChange } from "@/models/RentChange";
 import { ReminderLog } from "@/models/ReminderLog";
-import { ActionForm, ConfirmAction, MoneyField, SelectField, SubmitButton, TextField } from "@/components/form";
+import { ActionForm, ConfirmAction, Hidden, MoneyField, SelectField, SubmitButton, TextField } from "@/components/form";
 import {
   ButtonLink,
   Card,
@@ -42,7 +42,16 @@ import { IconAlert, IconBolt, IconCalendar, IconCheck, IconPencil, IconTrash, Ic
 import { createPayment } from "../../payments/actions";
 import { PaymentForm } from "../../payments/payment-form";
 import { deleteRental, moveOutRental } from "../actions";
-import { addCharge, changeRent, deleteCharge, deleteRentChange, recordDepositEntry, recordDepositPayment } from "../ledger-actions";
+import {
+  addCharge,
+  changeRent,
+  deleteCharge,
+  deleteDepositEntry,
+  deleteRentChange,
+  editDepositEntry,
+  recordDepositEntry,
+  recordDepositPayment,
+} from "../ledger-actions";
 import { DepositReminderButton } from "@/components/deposit-reminder-button";
 import { ChargeForm } from "./charge-form";
 
@@ -370,7 +379,7 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
 
           <Card
             title="Deposit"
-            description="Security deposit ledger. Entries are permanent; correct a mistake with a new entry."
+            description="Security deposit ledger. Use Edit or Delete on an entry to fix a mistake."
             className={settleDeposit ? "ring-2 ring-amber-300" : undefined}
           >
             <dl className="grid grid-cols-2 gap-3 text-sm">
@@ -441,7 +450,7 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
             {deposit.entries.length > 0 && (
               <ul className="mt-4 divide-y divide-slate-100 border-t border-slate-100 text-sm">
                 {deposit.entries.map((e) => (
-                  <li key={e.id} className="flex items-start justify-between gap-3 py-2">
+                  <li key={e.id} className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1 py-2">
                     <div className="min-w-0">
                       <p className="flex flex-wrap items-center gap-2 font-medium text-slate-800">
                         {e.label}
@@ -455,16 +464,60 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
                         {[formatDate(e.date), e.method ? paymentMethodLabel(e.method) : "", e.reason].filter(Boolean).join(" · ")}
                       </p>
                     </div>
-                    <span
-                      className={
-                        e.kind === "received"
-                          ? "shrink-0 font-medium text-emerald-700 tabular-nums"
-                          : "shrink-0 font-medium text-rose-600 tabular-nums"
-                      }
-                    >
-                      {e.kind === "received" ? "+" : "−"}
-                      {formatMoney(e.amount)}
-                    </span>
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <span
+                        className={
+                          e.kind === "received" ? "font-medium text-emerald-700 tabular-nums" : "font-medium text-rose-600 tabular-nums"
+                        }
+                      >
+                        {e.kind === "received" ? "+" : "−"}
+                        {formatMoney(e.amount)}
+                      </span>
+                      <ConfirmAction
+                        action={deleteDepositEntry.bind(null, id)}
+                        hidden={{ entryId: e.id }}
+                        label="Delete"
+                        confirmLabel="Delete"
+                        prompt="Delete this entry?"
+                        variant="ghost"
+                        icon={<IconTrash className="size-3.5" />}
+                      />
+                    </div>
+                    <details className="group basis-full">
+                      <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-brand-700 hover:underline [&::-webkit-details-marker]:hidden">
+                        <IconPencil className="size-3.5" /> Edit
+                      </summary>
+                      <ActionForm action={editDepositEntry.bind(null, id)} className="mt-3 space-y-3 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
+                        <Hidden name="entryId" value={e.id} />
+                        <div className="grid grid-cols-2 gap-3">
+                          <MoneyField name="amount" label="Amount" currency={symbol} defaultValue={toMajorString(e.amount)} />
+                          <TextField
+                            name="date"
+                            label="Date"
+                            type="date"
+                            defaultValue={e.date}
+                            max={today}
+                            min={e.kind === "received" ? addDays(r.moveInDate, -DEPOSIT_EARLIEST_DAYS) : undefined}
+                          />
+                        </div>
+                        {e.kind === "received" ? (
+                          <>
+                            <SelectField
+                              name="method"
+                              label="Method"
+                              defaultValue={e.method ?? "cash"}
+                              options={DEPOSIT_METHODS.map((m) => ({ value: m, label: paymentMethodLabel(m) }))}
+                            />
+                            <TextField name="note" label="Note (optional)" defaultValue={e.reason} />
+                          </>
+                        ) : (
+                          <TextField name="reason" label="Reason" defaultValue={e.reason} />
+                        )}
+                        <SubmitButton size="sm" variant="secondary">
+                          Save changes
+                        </SubmitButton>
+                      </ActionForm>
+                    </details>
                   </li>
                 ))}
               </ul>
