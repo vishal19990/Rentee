@@ -10,6 +10,8 @@ export type RentalDefaults = {
   moveOutDate?: string | null;
   monthlyRent?: number;
   deposit?: number;
+  /** New rentals: default advance date (today). */
+  depositAdvanceDate?: string;
   dueDay?: number;
 };
 
@@ -67,15 +69,34 @@ export function RentalForm({
         />
         <MoneyField
           name="deposit"
-          label="Security deposit"
+          label="Deposit quoted"
           currency={symbol}
           defaultValue={defaults.deposit !== undefined ? toMajorString(defaults.deposit) : ""}
           hint={
             showMoveOut
-              ? "Agreed deposit at move-in. To record more money received, deductions or a refund, use the Deposit card on the rental page."
-              : "Recorded as received in the deposit ledger."
+              ? "Total security deposit agreed with the tenant. Record payments, deductions or a refund in the Deposit card on the rental page."
+              : "Total security deposit agreed with the tenant."
           }
         />
+        {!showMoveOut && (
+          <>
+            <MoneyField
+              name="depositAdvance"
+              label="Advance received"
+              currency={symbol}
+              placeholder="Whole deposit"
+              hint="Paid so far towards the deposit. Leave empty if the whole deposit is paid; enter 0 if nothing yet. The rest can be added later on the rental page."
+            />
+            <TextField
+              name="depositAdvanceDate"
+              label="Advance date"
+              type="date"
+              defaultValue={defaults.depositAdvanceDate}
+              max={defaults.depositAdvanceDate}
+              hint="May be before the move-in date (paid at booking)."
+            />
+          </>
+        )}
         <TextField
           name="dueDay"
           label="Rent due day"

@@ -3,7 +3,7 @@
  * summary. Inputs are plain data (already loaded); amounts are integer minor units.
  * The Excel / PDF writers (reports-xlsx.ts, report-pdf.ts) and the pages render these.
  */
-import { DEPOSIT_KIND_LABELS, type DepositKind } from "./deposit";
+import { DEPOSIT_KIND_LABELS, depositEntryLabel, depositStatus, type DepositKind, type DepositStatus } from "./deposit";
 import { chargeLabel } from "./charges";
 import { expenseCategoryLabel } from "./expenses";
 import { fyMonths, fyOf } from "./fy";
@@ -132,6 +132,8 @@ export type TenantLedger = {
   deposit: LedgerDepositEntry[];
   totals: { rent: number; charges: number; due: number; paid: number; outstanding: number; overdue: number };
   depositHeld: number;
+  /** Deposit quoted, advance paid, paid later and balance (when the rental's deposit terms are given). */
+  depositStatus?: DepositStatus;
 };
 
 /**
@@ -143,6 +145,8 @@ export function tenantLedger(
   schedule: RentMonth[],
   payments: LedgerPayment[],
   depositEntries: { date: string; kind: DepositKind; amount: number; reason: string }[],
+  /** The rental's deposit terms: received entries are then labelled Advance / Part payment. */
+  depositTerms?: { deposit: number; moveInDate: string; advanceFlow: boolean },
 ): TenantLedger {
   let running = 0;
   const totals = { rent: 0, charges: 0, due: 0, paid: 0, outstanding: 0, overdue: 0 };
@@ -176,11 +180,14 @@ export function tenantLedger(
     .sort((a, b) => a.e.date.localeCompare(b.e.date) || a.i - b.i)
     .map(({ e }) => {
       held += e.kind === "received" ? e.amount : -e.amount;
-      return { date: e.date, kind: e.kind, label: DEPOSIT_KIND_LABELS[e.kind] ?? e.kind, amount: e.amount, reason: e.reason, held };
+      const label = depositTerms ? depositEntryLabel(e, depositTerms.moveInDate) : (DEPOSIT_KIND_LABELS[e.kind] ?? e.kind);
+      return { date: e.date, kind: e.kind, label, amount: e.amount, reason: e.reason, held };
     });
 
   const sortedPayments = [...payments].sort((a, b) => a.paidOn.localeCompare(b.paidOn) || a.forMonth.localeCompare(b.forMonth));
-  return { months, payments: sortedPayments, deposit, totals, depositHeld: held };
+  const ledger: TenantLedger = { months, payments: sortedPayments, deposit, totals, depositHeld: held };
+  if (depositTerms) ledger.depositStatus = depositStatus(depositTerms, depositEntries);
+  return ledger;
 }
 
 /* ---------------- financial-year summary ---------------- */

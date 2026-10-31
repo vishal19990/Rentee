@@ -75,6 +75,20 @@ export function verifyReceiptToken(token: string, secret?: Uint8Array): VerifyRe
   return { ok: true, link: { kind: "receipt", paymentId: parts[1] } };
 }
 
+/** Security deposit receipt: /r/<token> too, for one received deposit entry (does not expire). */
+export type DepositReceiptLink = { kind: "deposit-receipt"; entryId: string };
+
+export function signDepositReceiptToken(entryId: string, secret?: Uint8Array): string {
+  if (!OBJECT_ID.test(entryId)) throw new Error("Invalid deposit entry id");
+  return seal(`d.${entryId}`, secret);
+}
+
+export function verifyDepositReceiptToken(token: string, secret?: Uint8Array): VerifyResult<DepositReceiptLink> {
+  const parts = open(token, secret);
+  if (!parts || parts.length !== 2 || parts[0] !== "d" || !OBJECT_ID.test(parts[1])) return { ok: false, reason: "invalid" };
+  return { ok: true, link: { kind: "deposit-receipt", entryId: parts[1] } };
+}
+
 /**
  * Pay link for a rental. The expiry is a whole UTC day, so links made on the same day are
  * identical (a reminder's logged message matches the one that was opened).

@@ -5,7 +5,7 @@ import { loadRentals } from "@/lib/data";
 import { rentalBadge } from "@/lib/rent";
 import { formatDate } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
-import { ButtonLink, EmptyState, FilterTabs, PageHeader, StatusBadge, Table, TBody, Td, Th, THead } from "@/components/ui";
+import { Badge, ButtonLink, EmptyState, FilterTabs, PageHeader, StatusBadge, Table, TBody, Td, Th, THead } from "@/components/ui";
 import { IconFile, IconPlus } from "@/components/icons";
 
 export const metadata: Metadata = { title: "Rentals" };
@@ -90,7 +90,10 @@ export default async function RentalsPage({ searchParams }: { searchParams: Prom
                     )}
                   </Td>
                   <Td>
-                    <StatusBadge status={rentalBadge(r)} />
+                    <span className="flex flex-wrap gap-1.5">
+                      <StatusBadge status={rentalBadge(r)} />
+                      {r.depositBalance > 0 && <Badge tone="amber">Deposit balance {formatMoney(r.depositBalance)}</Badge>}
+                    </span>
                   </Td>
                 </tr>
               ))}

@@ -201,10 +201,16 @@ export async function ledgerXlsx(h: LedgerHeading, ledger: TenantLedger): Promis
     ledger.payments.map((p) => ({ ...p, forMonth: formatMonth(p.forMonth), method: titleCase(p.method) })),
     { paidOn: "Total", amount: ledger.payments.reduce((s, p) => s + p.amount, 0) },
   );
+  const ds = ledger.depositStatus;
   addTable(
     wb,
     "Deposit",
-    title,
+    ds
+      ? [
+          ...title,
+          `Deposit quoted: ${major(ds.agreed)} · Advance paid: ${major(ds.advance)} · Paid later: ${major(ds.paidLater)} · Balance: ${major(ds.balance)} (${CURRENCY})`,
+        ]
+      : title,
     [
       { header: "Date", key: "date", width: 12 },
       { header: "Entry", key: "label", width: 12 },

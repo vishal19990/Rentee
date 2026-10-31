@@ -13,6 +13,7 @@ import { Property } from "@/models/Property";
 import { ButtonLink, Card, EmptyState, PageHeader, StatCard, StatusBadge } from "@/components/ui";
 import { WhatsAppReminderButton } from "@/components/whatsapp-button";
 import { AgreementsExpiringCard } from "@/components/agreements-expiring-card";
+import { DepositBalancesCard } from "@/components/deposit-balances-card";
 import { EnquiriesDashboardCard } from "@/components/enquiries-dashboard-card";
 import {
   IconAlert,
@@ -258,6 +259,8 @@ export default async function DashboardPage() {
         </Card>
 
         <AgreementsExpiringCard rentals={rentals} today={today} />
+
+        <DepositBalancesCard rentals={rentals} />
 
         <EnquiriesDashboardCard today={today} />
       </div>

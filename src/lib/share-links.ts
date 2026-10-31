@@ -1,12 +1,17 @@
 import "server-only";
 import { appBaseUrl } from "./app-url";
 import { getUpiSettings } from "./landlord-settings";
-import { signPayToken, signReceiptToken } from "./signed-links";
+import { signDepositReceiptToken, signPayToken, signReceiptToken } from "./signed-links";
 import type { ReminderDue } from "./whatsapp";
 
 /** Public receipt link: <base>/r/<token> (no login; does not expire). */
 export async function receiptShareUrl(paymentId: string): Promise<string> {
   return `${await appBaseUrl()}/r/${signReceiptToken(paymentId)}`;
+}
+
+/** Public deposit receipt link: <base>/r/<token> (no login; does not expire). */
+export async function depositReceiptShareUrl(entryId: string): Promise<string> {
+  return `${await appBaseUrl()}/r/${signDepositReceiptToken(entryId)}`;
 }
 
 /** Public UPI pay link for a rental: <base>/p/<token> (expires after 45 days); "" when UPI is off. */

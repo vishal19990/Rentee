@@ -23,7 +23,7 @@ export async function lastRemindedByRental(rentalIds: string[]): Promise<Map<str
   if (rentalIds.length === 0) return new Map();
   await connectDB();
   const rows = await ReminderLog.aggregate<{ _id: Types.ObjectId; last: Date }>([
-    { $match: { rental: { $in: rentalIds.map((id) => new Types.ObjectId(id)) } } },
+    { $match: { rental: { $in: rentalIds.map((id) => new Types.ObjectId(id)) }, kind: { $ne: "deposit" } } },
     { $group: { _id: "$rental", last: { $max: "$sentAt" } } },
   ]);
   return new Map(rows.map((r) => [String(r._id), r.last]));

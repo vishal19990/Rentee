@@ -24,6 +24,20 @@ const rentalSchema = new Schema(
      * initialised (see ensureDepositLedger in lib/deposit-store.ts).
      */
     depositHeld: { type: Number, min: 0 },
+    /**
+     * Set on rentals created with a deposit advance (the deposit is paid in parts): the advance
+     * taken at creation (minor units, may be 0) and its date. Absent on older rentals, whose
+     * deposit was recorded as fully received at move-in. See depositStatus in lib/deposit.ts.
+     */
+    depositAdvance: {
+      type: new Schema({ amount: { type: Number, required: true, min: 0 }, date: { type: Date, required: true } }, { _id: false }),
+      default: undefined,
+    },
+    /**
+     * Cached total received (advance-flow rentals only), used as an atomic guard so payments
+     * can never take more than the agreed deposit. See addDepositEntry in lib/deposit-store.ts.
+     */
+    depositReceived: { type: Number, min: 0 },
     dueDay: { type: Number, required: true, min: 1, max: 28, default: 1 },
     status: { type: String, enum: ["active", "moved_out"], required: true, default: "active", index: true },
   },

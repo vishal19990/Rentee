@@ -103,6 +103,56 @@ export function receiptMessage(r: Pick<ReceiptData, "receiptNo" | "amount" | "te
   );
 }
 
+/* ---------- security deposit receipts ---------- */
+
+export const DEPOSIT_RECEIPT_PREFIX = "DEP";
+
+/** "DEP/2026-27/0001": its own sequence per FY of the payment date, separate from rent receipts. */
+export function formatDepositReceiptNo(fy: string, seq: number): string {
+  return formatReceiptNo(fy, seq).replace(RECEIPT_PREFIX, DEPOSIT_RECEIPT_PREFIX);
+}
+
+export function depositReceiptCounterKey(fy: string): string {
+  return `deposit-receipt:${fy}`;
+}
+
+/** A security deposit receipt (one received ledger entry). Same privacy rules as rent receipts. */
+export type DepositReceiptData = {
+  kind: "deposit";
+  receiptNo: string;
+  paidOn: string;
+  /** "" when the entry has no method recorded. */
+  method: string;
+  amount: number;
+  landlord: LandlordDetails;
+  tenantName: string;
+  propertyName: string;
+  /** Admin view only. */
+  propertyAddress: string | null;
+  /** Admin view only. */
+  note: string | null;
+  /** "Advance" (on or before move-in) or "Part payment". */
+  label: string;
+  /** Deposit quoted. */
+  agreed: number;
+  /** Total received up to and including this payment. */
+  totalReceived: number;
+  /** Still due after this payment. */
+  balance: number;
+};
+
+export function isDepositReceipt(r: ReceiptData | DepositReceiptData): r is DepositReceiptData {
+  return (r as DepositReceiptData).kind === "deposit";
+}
+
+/** Message for "Send receipt on WhatsApp" on a deposit receipt. */
+export function depositReceiptMessage(r: Pick<DepositReceiptData, "receiptNo" | "amount" | "tenantName" | "propertyName">, link: string): string {
+  return (
+    `Hi ${firstName(r.tenantName)}, thank you for your security deposit payment of ${formatMoneyShort(r.amount)} for ` +
+    `${r.propertyName}. Your deposit receipt ${r.receiptNo}: ${link}`
+  );
+}
+
 /* ---------- Settings: landlord details printed on receipts ---------- */
 
 const text = (label: string, max: number) =>

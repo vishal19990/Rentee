@@ -16,6 +16,7 @@ import {
   type RentSummary,
 } from "./rent";
 import { Charge } from "@/models/Charge";
+import { DepositEntry } from "@/models/DepositEntry";
 import { Payment } from "@/models/Payment";
 import { RentChange } from "@/models/RentChange";
 import { Property } from "@/models/Property";
@@ -67,6 +68,8 @@ export type RentalRow = {
   movingOut: boolean;
   schedule: RentMonth[];
   summary: RentSummary;
+  /** Deposit still to be paid (advance-flow rentals; always 0 for older rentals). */
+  depositBalance: number;
 };
 
 /**
@@ -79,13 +82,21 @@ export async function loadRentals(filter: Record<string, unknown> = {}, today = 
   if (rentals.length === 0) return [];
 
   const rentalIds = rentals.map((r) => r._id);
-  const [properties, tenants, payments, changes, charges] = await Promise.all([
+  const advanceIds = rentals.filter((r) => r.depositAdvance).map((r) => r._id);
+  const [properties, tenants, payments, changes, charges, depositIn] = await Promise.all([
     Property.find({ _id: { $in: rentals.map((r) => r.property) } }).select("name").lean(),
     Tenant.find({ _id: { $in: rentals.map((r) => r.tenant) } }).select("name phone").lean(),
     Payment.find({ rental: { $in: rentalIds } }).select("rental forMonth amount").lean(),
     RentChange.find({ rental: { $in: rentalIds } }).sort({ effectiveMonth: 1 }).select("rental effectiveMonth monthlyRent").lean(),
     Charge.find({ rental: { $in: rentalIds } }).sort({ month: 1, createdAt: 1 }).select("rental month type amount").lean(),
+    advanceIds.length
+      ? DepositEntry.aggregate<{ _id: Types.ObjectId; total: number }>([
+          { $match: { rental: { $in: advanceIds }, kind: "received" } },
+          { $group: { _id: "$rental", total: { $sum: "$amount" } } },
+        ])
+      : Promise.resolve([]),
   ]);
+  const depositReceived = new Map(depositIn.map((d) => [toId(d._id), d.total]));
   const propName = new Map(properties.map((p) => [toId(p._id), p.name]));
   const tenantName = new Map(tenants.map((t) => [toId(t._id), t.name]));
   const tenantPhone = new Map(tenants.map((t) => [toId(t._id), t.phone]));
@@ -134,6 +145,7 @@ export async function loadRentals(filter: Record<string, unknown> = {}, today = 
       movingOut: status === "active" && !!r.moveOutDate,
       schedule,
       summary: summarize(schedule),
+      depositBalance: r.depositAdvance ? Math.max(r.deposit - (depositReceived.get(toId(r._id)) ?? 0), 0) : 0,
     };
   });
 }

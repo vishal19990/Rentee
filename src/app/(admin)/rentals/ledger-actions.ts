@@ -4,13 +4,19 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { asObjectId, syncRentalStatuses } from "@/lib/data";
 import { connectDB } from "@/lib/db";
-import { addDepositEntry } from "@/lib/deposit-store";
-import { formatMonth, monthOf, payableMonths, toISODate } from "@/lib/rent";
+import { addDepositEntry, addDepositPayment, loadDeposit } from "@/lib/deposit-store";
+import { depositPaymentLabel, depositReminderMessage } from "@/lib/deposit";
+import { formatMoneyShort } from "@/lib/money";
+import { formatMonth, localToday, monthOf, payableMonths, toISODate } from "@/lib/rent";
 import { syncNotificationsSafe } from "@/lib/notification-sync";
-import { chargeSchema, depositEntrySchema, parseForm, rentChangeSchema, type ActionState } from "@/lib/validation";
+import { chargeSchema, depositEntrySchema, depositPaymentSchema, parseForm, rentChangeSchema, type ActionState } from "@/lib/validation";
+import { NO_PHONE_TOOLTIP, normalizePhone } from "@/lib/whatsapp";
 import { Charge } from "@/models/Charge";
+import { Property } from "@/models/Property";
+import { ReminderLog } from "@/models/ReminderLog";
 import { RentChange } from "@/models/RentChange";
 import { Rental } from "@/models/Rental";
+import { Tenant } from "@/models/Tenant";
 
 /**
  * Rental money actions: rent changes (F4), utility/other charges (F5) and the security
@@ -118,4 +124,55 @@ export async function recordDepositEntry(id: string, _prev: ActionState, fd: For
   revalidatePath(`/rentals/${id}`);
   const labels = { received: "Deposit received", deduction: "Deduction", refund: "Refund" } as const;
   return { ok: true, message: `${labels[parsed.data.kind]} recorded.` };
+}
+
+/** "Add deposit payment": an advance (dated on/before move-in) or a later part payment. */
+export async function recordDepositPayment(id: string, _prev: ActionState, fd: FormData): Promise<ActionState> {
+  const user = await requireUser();
+  const found = await loadRental(id);
+  if (!found) return NOT_FOUND;
+  const { _id, rental } = found;
+  const moveInDate = toISODate(rental.moveInDate);
+  const parsed = parseForm(depositPaymentSchema({ moveInDate, today: localToday() }), fd);
+  if (!parsed.success) return parsed.state;
+
+  const error = await addDepositPayment(_id, parsed.data, user.id);
+  if (error) return { ok: false, message: error, fieldErrors: { amount: [error] }, values: parsed.values };
+  revalidatePath(`/rentals/${id}`);
+  revalidatePath("/rentals");
+  revalidatePath("/dashboard");
+  revalidatePath(`/tenants/${String(rental.tenant)}`);
+  return { ok: true, message: `${depositPaymentLabel(parsed.data.date, moveInDate)} of ${formatMoneyShort(parsed.data.amount)} recorded.` };
+}
+
+export type LogDepositReminderResult = { ok: true; sentAt: string } | { ok: false; message: string };
+
+/**
+ * Records that the admin opened a WhatsApp reminder about the deposit balance. The message is
+ * rebuilt here from current data (never taken from the client).
+ */
+export async function logDepositReminder(id: string): Promise<LogDepositReminderResult> {
+  const user = await requireUser();
+  const found = await loadRental(id);
+  if (!found) return { ok: false, message: "Rental not found." };
+  const { _id, rental } = found;
+  const { status } = await loadDeposit(_id);
+  if (status.balance <= 0) return { ok: false, message: "The deposit is fully paid" };
+  const [tenant, property] = await Promise.all([
+    Tenant.findById(rental.tenant).select("name phone").lean(),
+    Property.findById(rental.property).select("name").lean(),
+  ]);
+  const phone = normalizePhone(tenant?.phone);
+  if (!phone) return { ok: false, message: NO_PHONE_TOOLTIP };
+  const log = await ReminderLog.create({
+    rental: _id,
+    tenant: rental.tenant,
+    sentAt: new Date(),
+    message: depositReminderMessage(tenant?.name ?? "", property?.name ?? "", status.balance),
+    kind: "deposit",
+    phone,
+    sentBy: user.id,
+  });
+  revalidatePath(`/rentals/${id}`);
+  return { ok: true, sentAt: log.sentAt.toISOString() };
 }

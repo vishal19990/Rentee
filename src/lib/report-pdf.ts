@@ -233,6 +233,18 @@ export async function ledgerPdf(h: LedgerPdfHeading, ledger: TenantLedger): Prom
   );
 
   w.heading("Security deposit");
+  if (ledger.depositStatus) {
+    const ds = ledger.depositStatus;
+    w.facts(
+      [
+        ["Deposit quoted", pdfMoney(ds.agreed)],
+        ["Advance paid", pdfMoney(ds.advance)],
+        ["Paid later", pdfMoney(ds.paidLater)],
+        ["Balance", pdfMoney(ds.balance)],
+      ],
+      4,
+    );
+  }
   w.table(
     [
       { header: "Date", width: 70 },

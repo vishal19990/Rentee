@@ -6,10 +6,12 @@ import { asObjectId, loadRentals } from "@/lib/data";
 import { connectDB } from "@/lib/db";
 import { formatDate, formatDateTime, titleCase } from "@/lib/format";
 import { chargeLabel } from "@/lib/charges";
-import { DEPOSIT_KIND_LABELS } from "@/lib/deposit";
+import { DEPOSIT_EARLIEST_DAYS, DEPOSIT_METHODS, depositReminderMessage } from "@/lib/deposit";
 import { loadDeposit } from "@/lib/deposit-store";
 import { currencySymbol, formatMoney, toMajorString } from "@/lib/money";
-import { addMonths, formatMonth, localToday, monthOf, payableMonths, rentalBadge } from "@/lib/rent";
+import { paymentMethodLabel } from "@/lib/receipts";
+import { normalizePhone, whatsappUrl } from "@/lib/whatsapp";
+import { addDays, addMonths, formatMonth, localToday, monthOf, payableMonths, rentalBadge } from "@/lib/rent";
 import { reminderButtons } from "@/lib/reminders";
 import { getDefaultElectricityRate } from "@/lib/settings";
 import { Charge } from "@/models/Charge";
@@ -40,7 +42,8 @@ import { IconAlert, IconBolt, IconCalendar, IconCheck, IconPencil, IconTrash, Ic
 import { createPayment } from "../../payments/actions";
 import { PaymentForm } from "../../payments/payment-form";
 import { deleteRental, moveOutRental } from "../actions";
-import { addCharge, changeRent, deleteCharge, deleteRentChange, recordDepositEntry } from "../ledger-actions";
+import { addCharge, changeRent, deleteCharge, deleteRentChange, recordDepositEntry, recordDepositPayment } from "../ledger-actions";
+import { DepositReminderButton } from "@/components/deposit-reminder-button";
 import { ChargeForm } from "./charge-form";
 
 export const metadata: Metadata = { title: "Rental" };
@@ -54,17 +57,23 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
   const [r] = await loadRentals({ _id }, today);
   if (!r) notFound();
   await connectDB();
-  const [payments, reminderLogs, reminders, rentChanges, charges, deposit, property, settingsRate] = await Promise.all([
+  const [payments, reminderLogs, reminders, rentChanges, charges, deposit, property, settingsRate, lastDepositReminder] = await Promise.all([
     Payment.find({ rental: _id }).sort({ paidOn: -1, createdAt: -1 }).lean(),
-    ReminderLog.find({ rental: _id }).sort({ sentAt: -1 }).limit(5).lean(),
+    ReminderLog.find({ rental: _id, kind: { $ne: "deposit" } }).sort({ sentAt: -1 }).limit(5).lean(),
     reminderButtons([r], today),
     RentChange.find({ rental: _id }).sort({ effectiveMonth: 1 }).lean(),
     Charge.find({ rental: _id }).sort({ month: -1, createdAt: -1 }).lean(),
     loadDeposit(_id),
     Property.findById(r.propertyId).select("electricityRate").lean(),
     getDefaultElectricityRate(),
+    ReminderLog.findOne({ rental: _id, kind: "deposit" }).sort({ sentAt: -1 }).select("sentAt").lean(),
   ]);
   const reminder = reminders.get(r.id);
+  // Deposit: quoted, advance, paid later, balance; WhatsApp reminder while a balance is due.
+  const dep = deposit.status;
+  const depositPct = dep.agreed > 0 ? Math.min(100, Math.round((dep.received / dep.agreed) * 100)) : 0;
+  const depositReminder = depositReminderMessage(r.tenantName, r.propertyName, dep.balance);
+  const tenantPhone = normalizePhone(r.tenantPhone);
   const symbol = currencySymbol();
 
   // Rent changes: the original rent from move-in, then each change. Default: next month.
@@ -97,6 +106,7 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
           <span className="flex flex-wrap items-center gap-3">
             {r.propertyName}
             <StatusBadge status={rentalBadge(r)} />
+            {dep.balance > 0 && <Badge tone="amber">Deposit balance {formatMoney(dep.balance)}</Badge>}
           </span>
         }
         description={
@@ -365,8 +375,22 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
           >
             <dl className="grid grid-cols-2 gap-3 text-sm">
               <div>
-                <dt className="text-xs text-slate-500">Received</dt>
-                <dd className="font-medium tabular-nums">{formatMoney(deposit.summary.received)}</dd>
+                <dt className="text-xs text-slate-500">Deposit quoted</dt>
+                <dd className="font-medium tabular-nums">{formatMoney(dep.agreed)}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-slate-500">Advance paid</dt>
+                <dd className="font-medium tabular-nums">{formatMoney(dep.advance)}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-slate-500">Paid later</dt>
+                <dd className="font-medium tabular-nums">{formatMoney(dep.paidLater)}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-slate-500">Balance</dt>
+                <dd className={dep.balance > 0 ? "font-semibold text-amber-700 tabular-nums" : "font-medium tabular-nums"}>
+                  {dep.balance > 0 ? formatMoney(dep.balance) : "Nil"}
+                </dd>
               </div>
               <div>
                 <dt className="text-xs text-slate-500">Deductions</dt>
@@ -376,11 +400,38 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
                 <dt className="text-xs text-slate-500">Refunded</dt>
                 <dd className="font-medium tabular-nums">{formatMoney(deposit.summary.refunded)}</dd>
               </div>
-              <div>
+              <div className="col-span-2">
                 <dt className="text-xs text-slate-500">Held</dt>
                 <dd className="text-base font-semibold text-slate-900 tabular-nums">{formatMoney(deposit.summary.held)}</dd>
               </div>
             </dl>
+            {dep.agreed > 0 && (
+              <div className="mt-3">
+                <div
+                  className="h-2 overflow-hidden rounded-full bg-slate-100"
+                  role="progressbar"
+                  aria-label="Deposit received"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={depositPct}
+                >
+                  <div className={dep.balance > 0 ? "h-full rounded-full bg-amber-500" : "h-full rounded-full bg-emerald-500"} style={{ width: `${depositPct}%` }} />
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  {formatMoney(dep.received)} of {formatMoney(dep.agreed)} received ({depositPct}%)
+                </p>
+              </div>
+            )}
+            {dep.balance > 0 && (
+              <div className="mt-4 space-y-2 rounded-xl bg-emerald-50/60 p-3 ring-1 ring-emerald-600/10">
+                <p className="text-xs whitespace-pre-line text-slate-700">{depositReminder}</p>
+                <DepositReminderButton
+                  rentalId={id}
+                  url={tenantPhone ? whatsappUrl(tenantPhone, depositReminder) : null}
+                  lastRemindedAt={lastDepositReminder ? lastDepositReminder.sentAt.toISOString() : null}
+                />
+              </div>
+            )}
             {settleDeposit && (
               <p className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 ring-1 ring-amber-600/20">
                 {r.status === "moved_out" ? "The tenant has moved out." : "The tenant is moving out."} Record any deductions (with a
@@ -392,10 +443,16 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
                 {deposit.entries.map((e) => (
                   <li key={e.id} className="flex items-start justify-between gap-3 py-2">
                     <div className="min-w-0">
-                      <p className="font-medium text-slate-800">{DEPOSIT_KIND_LABELS[e.kind]}</p>
+                      <p className="flex flex-wrap items-center gap-2 font-medium text-slate-800">
+                        {e.label}
+                        {e.kind === "received" && (
+                          <Link href={`/deposits/${e.id}/receipt`} className="link text-xs font-normal" title={e.receiptNo ? `Receipt ${e.receiptNo}` : "Receipt"}>
+                            Receipt
+                          </Link>
+                        )}
+                      </p>
                       <p className="text-xs break-words text-slate-500">
-                        {formatDate(e.date)}
-                        {e.reason ? ` · ${e.reason}` : ""}
+                        {[formatDate(e.date), e.method ? paymentMethodLabel(e.method) : "", e.reason].filter(Boolean).join(" · ")}
                       </p>
                     </div>
                     <span
@@ -412,14 +469,45 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
                 ))}
               </ul>
             )}
+            <ActionForm action={recordDepositPayment.bind(null, id)} className="mt-4 space-y-4 border-t border-slate-100 pt-4">
+              <p className="text-sm font-medium text-slate-900">Add deposit payment</p>
+              <div className="grid grid-cols-2 gap-4">
+                <MoneyField
+                  name="amount"
+                  label="Amount"
+                  currency={symbol}
+                  defaultValue={dep.balance > 0 ? toMajorString(dep.balance) : ""}
+                  hint={dep.balance > 0 ? `Balance: ${formatMoney(dep.balance)}` : undefined}
+                />
+                <TextField
+                  name="date"
+                  label="Date"
+                  type="date"
+                  defaultValue={today}
+                  min={addDays(r.moveInDate, -DEPOSIT_EARLIEST_DAYS)}
+                  max={today}
+                  hint={`On or before ${formatDate(r.moveInDate)} counts as advance`}
+                />
+              </div>
+              <SelectField
+                name="method"
+                label="Method"
+                defaultValue="cash"
+                options={DEPOSIT_METHODS.map((m) => ({ value: m, label: paymentMethodLabel(m) }))}
+              />
+              <TextField name="note" label="Note (optional)" placeholder="e.g. Second part of the deposit" />
+              <SubmitButton className="w-full" variant="secondary">
+                Add deposit payment
+              </SubmitButton>
+            </ActionForm>
             <ActionForm action={recordDepositEntry.bind(null, id)} className="mt-4 space-y-4 border-t border-slate-100 pt-4">
+              <p className="text-sm font-medium text-slate-900">Deduction or refund</p>
               <div className="grid grid-cols-2 gap-4">
                 <SelectField
                   name="kind"
                   label="Entry"
-                  defaultValue={settleDeposit ? "deduction" : "received"}
+                  defaultValue="deduction"
                   options={[
-                    { value: "received", label: "Received" },
                     { value: "deduction", label: "Deduction" },
                     { value: "refund", label: "Refund" },
                   ]}
@@ -501,7 +589,7 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
                 { label: "Moved in", value: formatDate(r.moveInDate) },
                 { label: r.status === "moved_out" ? "Moved out" : "Move-out", value: r.moveOutDate ? formatDate(r.moveOutDate) : "Not scheduled" },
                 { label: "Original rent", value: formatMoney(r.monthlyRent) },
-                { label: "Deposit agreed", value: formatMoney(r.deposit) },
+                { label: "Deposit quoted", value: formatMoney(r.deposit) },
                 { label: "Due day", value: String(r.dueDay) },
               ]}
             />

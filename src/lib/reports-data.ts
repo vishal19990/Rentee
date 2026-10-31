@@ -75,6 +75,7 @@ export async function loadLedger(rentalId: string, today = localToday()): Promis
     rental.schedule,
     payments.map((p) => ({ paidOn: toISODate(p.paidOn), forMonth: p.forMonth, amount: p.amount, method: p.method, note: p.note ?? "" })),
     deposit.entries,
+    { deposit: rental.deposit, moveInDate: rental.moveInDate, advanceFlow: deposit.advanceFlow },
   );
   return { rental, ledger };
 }

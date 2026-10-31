@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { CHARGE_TYPES, electricityAmount, meterUnits } from "./charges";
-import { DEPOSIT_KINDS } from "./deposit";
+import { DEPOSIT_EARLIEST_DAYS, DEPOSIT_KINDS, DEPOSIT_METHODS } from "./deposit";
 import { EXPENSE_CATEGORIES } from "./expenses";
 import { parseMoney } from "./money";
-import { formatMonth } from "./rent";
+import { addDays, formatMonth } from "./rent";
 import { REMINDER_PLACEHOLDERS, unknownPlaceholders } from "./whatsapp";
 
 /* ---------- shared form-state contract (used by server actions and client forms) ---------- */
@@ -210,6 +210,35 @@ export const rentalSchema = z.object({
   ...rentalTerms,
 });
 
+/**
+ * New rental with the deposit advance: "Advance received" (empty = the whole deposit quoted,
+ * 0 = none yet) and "Advance date" (empty = today; may be before move-in, never after today).
+ */
+export const rentalCreateSchema = (today: string) =>
+  rentalSchema
+    .extend({
+      depositAdvance: optionalMoney("Advance received"),
+      depositAdvanceDate: optionalIsoDate("Advance date"),
+    })
+    .transform((v, ctx) => {
+      const amount = v.depositAdvance ?? v.deposit;
+      const date = v.depositAdvanceDate ?? today;
+      if (amount > v.deposit) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["depositAdvance"], message: "Advance can't be more than the deposit quoted" });
+      }
+      if (date > today) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["depositAdvanceDate"], message: "Advance date can't be in the future" });
+      } else if (date < addDays(v.moveInDate, -DEPOSIT_EARLIEST_DAYS)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["depositAdvanceDate"],
+          message: `Advance date can't be more than ${DEPOSIT_EARLIEST_DAYS} days before move-in`,
+        });
+      }
+      const { depositAdvance: _a, depositAdvanceDate: _d, ...rest } = v;
+      return { ...rest, advance: { amount, date } };
+    });
+
 /** Editing a rental; the move-out date is optional (empty = still living there). */
 export const rentalUpdateSchema = z
   .object({ ...rentalTerms, moveOutDate: optionalIsoDate("Move-out date") })
@@ -332,6 +361,31 @@ export const depositEntrySchema = z
     message: "Give a reason for the deduction",
     path: ["reason"],
   });
+
+/**
+ * "Add deposit payment": dated from DEPOSIT_EARLIEST_DAYS before move-in through today.
+ * The amount is checked against the balance by the store.
+ */
+export const depositPaymentSchema = (bounds: { moveInDate: string; today: string }) =>
+  z
+    .object({
+      amount: money("Amount"),
+      date: isoDate("Date"),
+      method: z.enum(DEPOSIT_METHODS, { errorMap: () => ({ message: "Select a payment method" }) }),
+      note: optionalText(300),
+    })
+    .superRefine((v, ctx) => {
+      const earliest = addDays(bounds.moveInDate, -DEPOSIT_EARLIEST_DAYS);
+      if (v.date > bounds.today) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["date"], message: "Date can't be in the future" });
+      } else if (v.date < earliest) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["date"],
+          message: `Date can't be more than ${DEPOSIT_EARLIEST_DAYS} days before move-in`,
+        });
+      }
+    });
 
 /* ---------- expenses (F2) ---------- */
 

@@ -1,5 +1,5 @@
 import mongoose, { type InferSchemaType, type Model } from "mongoose";
-import { DEPOSIT_KINDS } from "@/lib/deposit";
+import { DEPOSIT_KINDS, DEPOSIT_METHODS } from "@/lib/deposit";
 
 const { Schema } = mongoose;
 
@@ -18,6 +18,10 @@ const depositEntrySchema = new Schema(
     reason: { type: String, default: "" },
     source: { type: String, enum: ["initial", "manual"], required: true, default: "manual" },
     createdBy: { type: Schema.Types.ObjectId, ref: "User", default: null },
+    /** How a received payment was made (advance-flow payments; null on older entries). */
+    method: { type: String, enum: [...DEPOSIT_METHODS, null], default: null },
+    /** Deposit receipt number "DEP/<FY>/<seq>" for received entries; assigned lazily on older ones. */
+    receiptNo: { type: String, default: null },
   },
   { timestamps: true },
 );
@@ -28,6 +32,9 @@ depositEntrySchema.index(
 );
 
 export type DepositEntryDoc = InferSchemaType<typeof depositEntrySchema>;
+
+// Gained fields (method, receiptNo); in dev, recompile on hot reload so a stale cached model doesn't drop them.
+if (process.env.NODE_ENV !== "production" && mongoose.models.DepositEntry) mongoose.deleteModel("DepositEntry");
 
 export const DepositEntry: Model<DepositEntryDoc> =
   (mongoose.models.DepositEntry as Model<DepositEntryDoc>) || mongoose.model<DepositEntryDoc>("DepositEntry", depositEntrySchema);

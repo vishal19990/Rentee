@@ -1,8 +1,20 @@
 import "server-only";
 import { Types } from "mongoose";
 import { connectDB } from "./db";
-import { depositEntryError, depositSummary, type DepositKind, type DepositSummary } from "./deposit";
+import {
+  agreedDepositError,
+  depositEntryError,
+  depositEntryLabel,
+  depositPaymentError,
+  depositStatus,
+  depositSummary,
+  type DepositKind,
+  type DepositMethod,
+  type DepositStatus,
+  type DepositSummary,
+} from "./deposit";
 import { dateFromISO } from "./format";
+import { ensureDepositReceiptNo } from "./receipt-store";
 import { toISODate } from "./rent";
 import { DepositEntry } from "@/models/DepositEntry";
 import { Rental } from "@/models/Rental";
@@ -19,12 +31,16 @@ function isDuplicateKey(err: unknown): boolean {
  */
 export async function ensureDepositLedger(rentalId: string | Types.ObjectId): Promise<void> {
   await connectDB();
-  const rental = await Rental.findById(rentalId).select("deposit moveInDate depositHeld").lean();
+  const rental = await Rental.findById(rentalId).select("deposit moveInDate depositHeld depositAdvance depositReceived").lean();
   if (!rental) return;
   const initialised = typeof rental.depositHeld === "number";
+  // Advance-flow rentals open the ledger with the advance taken at creation (none when 0);
+  // older rentals with the whole deposit, received at move-in.
+  const adv = rental.depositAdvance ?? null;
+  const initialAmount = adv ? adv.amount : rental.deposit;
 
   let created = false;
-  if (rental.deposit > 0 && !(initialised && (await DepositEntry.exists({ rental: rental._id, source: "initial" })))) {
+  if (initialAmount > 0 && !(initialised && (await DepositEntry.exists({ rental: rental._id, source: "initial" })))) {
     await DepositEntry.init(); // the partial unique index makes the upsert race-safe
     try {
       const res = await DepositEntry.updateOne(
@@ -34,14 +50,16 @@ export async function ensureDepositLedger(rentalId: string | Types.ObjectId): Pr
             rental: rental._id,
             source: "initial",
             kind: "received",
-            amount: rental.deposit,
-            date: rental.moveInDate,
-            reason: "Security deposit at move-in",
+            amount: initialAmount,
+            date: adv ? adv.date : rental.moveInDate,
+            reason: adv ? "" : "Security deposit at move-in",
           },
         },
         { upsert: true },
       );
       created = res.upsertedCount > 0;
+      // New advance payments get their receipt number when recorded.
+      if (created && adv && res.upsertedId) await ensureDepositReceiptNo(res.upsertedId as Types.ObjectId);
     } catch (err) {
       if (!isDuplicateKey(err)) throw err; // a concurrent call created it
     }
@@ -49,14 +67,19 @@ export async function ensureDepositLedger(rentalId: string | Types.ObjectId): Pr
   if (initialised) {
     // A deposit entered later (rental edited from 0 to an amount): only the call that created
     // the initial entry moves the guard.
-    if (created) await Rental.updateOne({ _id: rental._id }, { $inc: { depositHeld: rental.deposit } });
+    if (created) await Rental.updateOne({ _id: rental._id }, { $inc: { depositHeld: initialAmount } });
     return;
   }
   // Until depositHeld exists no other entry can be added (addDepositEntry requires it),
   // so the ledger read here is complete.
   const entries = await DepositEntry.find({ rental: rental._id }).select("kind amount").lean();
-  const held = Math.max(depositSummary(entries).held, 0);
-  await Rental.updateOne({ _id: rental._id, depositHeld: { $exists: false } }, { $set: { depositHeld: held } });
+  const summary = depositSummary(entries);
+  const held = Math.max(summary.held, 0);
+  // Advance-flow rentals also cache the total received (the guard for payments), set together.
+  await Rental.updateOne(
+    { _id: rental._id, depositHeld: { $exists: false } },
+    { $set: adv ? { depositHeld: held, depositReceived: summary.received } : { depositHeld: held } },
+  );
 }
 
 export type DepositEntryRow = {
@@ -66,20 +89,57 @@ export type DepositEntryRow = {
   date: string;
   reason: string;
   createdAt: string;
+  /** Payment method of a received entry, if recorded. */
+  method: string | null;
+  receiptNo: string | null;
+  /** Advance / Part payment / Deduction / Refund. */
+  label: string;
 };
 
-export async function loadDeposit(rentalId: string | Types.ObjectId): Promise<{ entries: DepositEntryRow[]; summary: DepositSummary }> {
+export async function loadDeposit(rentalId: string | Types.ObjectId): Promise<{
+  entries: DepositEntryRow[];
+  summary: DepositSummary;
+  /** Deposit quoted, advance, paid later and balance. */
+  status: DepositStatus;
+  /** Created with the advance flow (the deposit may be paid in parts). */
+  advanceFlow: boolean;
+}> {
   await ensureDepositLedger(rentalId);
-  const rows = await DepositEntry.find({ rental: rentalId }).sort({ date: 1, createdAt: 1 }).lean();
-  const entries = rows.map((e) => ({
-    id: String(e._id),
-    kind: e.kind as DepositKind,
-    amount: e.amount,
-    date: toISODate(e.date),
-    reason: e.reason ?? "",
-    createdAt: e.createdAt.toISOString(),
-  }));
-  return { entries, summary: depositSummary(entries) };
+  const [rows, rental] = await Promise.all([
+    DepositEntry.find({ rental: rentalId }).sort({ date: 1, createdAt: 1 }).lean(),
+    Rental.findById(rentalId).select("deposit moveInDate depositAdvance").lean(),
+  ]);
+  const moveInDate = rental ? toISODate(rental.moveInDate) : "";
+  const entries = rows.map((e) => {
+    const date = toISODate(e.date);
+    return {
+      id: String(e._id),
+      kind: e.kind as DepositKind,
+      amount: e.amount,
+      date,
+      reason: e.reason ?? "",
+      createdAt: e.createdAt.toISOString(),
+      method: e.method ?? null,
+      receiptNo: e.receiptNo ?? null,
+      label: depositEntryLabel({ kind: e.kind, date }, moveInDate),
+    };
+  });
+  const advanceFlow = !!rental?.depositAdvance;
+  const status = depositStatus({ deposit: rental?.deposit ?? 0, moveInDate, advanceFlow }, entries);
+  return { entries, summary: depositSummary(entries), status, advanceFlow };
+}
+
+/**
+ * Records a deposit payment ("Add deposit payment"). On advance-flow rentals it is guarded
+ * atomically so the total received never exceeds the agreed deposit; the entry gets its
+ * receipt number straight away. Returns an error message (for the amount field) or null.
+ */
+export async function addDepositPayment(
+  rentalId: Types.ObjectId,
+  payment: { amount: number; date: string; method: DepositMethod; note: string },
+  userId: string | null,
+): Promise<string | null> {
+  return addDepositEntry(rentalId, { kind: "received", amount: payment.amount, date: payment.date, reason: payment.note, method: payment.method }, userId);
 }
 
 /**
@@ -89,21 +149,37 @@ export async function loadDeposit(rentalId: string | Types.ObjectId): Promise<{ 
  */
 export async function addDepositEntry(
   rentalId: Types.ObjectId,
-  entry: { kind: DepositKind; amount: number; date: string; reason: string },
+  entry: { kind: DepositKind; amount: number; date: string; reason: string; method?: DepositMethod | null },
   userId: string | null,
 ): Promise<string | null> {
   await ensureDepositLedger(rentalId);
   const out = entry.kind !== "received";
+  // Advance-flow rentals: money in can't take the total received past the agreed deposit.
+  const capped = !out && !!(await Rental.exists({ _id: rentalId, depositAdvance: { $ne: null } }));
+  const inc = capped
+    ? { depositHeld: entry.amount, depositReceived: entry.amount }
+    : { depositHeld: out ? -entry.amount : entry.amount };
   const res = await Rental.updateOne(
-    out ? { _id: rentalId, depositHeld: { $gte: entry.amount } } : { _id: rentalId, depositHeld: { $exists: true } },
-    { $inc: { depositHeld: out ? -entry.amount : entry.amount } },
+    out
+      ? { _id: rentalId, depositHeld: { $gte: entry.amount } }
+      : capped
+        ? {
+            _id: rentalId,
+            depositHeld: { $exists: true },
+            depositReceived: { $exists: true },
+            $expr: { $lte: [{ $add: ["$depositReceived", entry.amount] }, "$deposit"] },
+          }
+        : { _id: rentalId, depositHeld: { $exists: true } },
+    { $inc: inc },
   );
   if (res.matchedCount === 0) {
-    const { summary } = await loadDeposit(rentalId);
-    return depositEntryError(summary.held, entry.kind, entry.amount) ?? "The deposit changed meanwhile. Please try again.";
+    const { summary, status } = await loadDeposit(rentalId);
+    const error = capped ? depositPaymentError(status.balance, entry.amount) : depositEntryError(summary.held, entry.kind, entry.amount);
+    return error ?? "The deposit changed meanwhile. Please try again.";
   }
+  let id: Types.ObjectId;
   try {
-    await DepositEntry.create({
+    const doc = await DepositEntry.create({
       rental: rentalId,
       kind: entry.kind,
       amount: entry.amount,
@@ -111,11 +187,27 @@ export async function addDepositEntry(
       reason: entry.reason,
       source: "manual",
       createdBy: userId,
+      method: entry.method ?? null,
     });
+    id = doc._id;
   } catch (err) {
     // Undo the guard so it stays in step with the ledger.
-    await Rental.updateOne({ _id: rentalId }, { $inc: { depositHeld: out ? entry.amount : -entry.amount } });
+    const undo = Object.fromEntries(Object.entries(inc).map(([k, v]) => [k, -v]));
+    await Rental.updateOne({ _id: rentalId }, { $inc: undo });
     throw err;
   }
+  if (entry.kind === "received") await ensureDepositReceiptNo(id);
   return null;
+}
+
+/**
+ * Changing the agreed deposit of an advance-flow rental: refused below the total already
+ * received. Returns an error message or null. Older rentals are not checked. (updateRental also
+ * filters on the cached depositReceived, so a payment racing the edit can't slip past.)
+ */
+export async function agreedDepositGuard(rentalId: Types.ObjectId, agreed: number): Promise<string | null> {
+  const rental = await Rental.findById(rentalId).select("depositAdvance").lean();
+  if (!rental?.depositAdvance) return null;
+  const { summary } = await loadDeposit(rentalId);
+  return agreedDepositError(agreed, summary.received);
 }

@@ -179,6 +179,25 @@ function Ledger({ data }: { data: NonNullable<Awaited<ReturnType<typeof loadLedg
         </Card>
 
         <Card title="Security deposit" bodyClassName="p-0">
+          {ledger.depositStatus && (
+            <dl className="grid grid-cols-2 gap-3 border-b border-slate-100 px-5 py-4 text-sm sm:grid-cols-4">
+              {(
+                [
+                  ["Deposit quoted", ledger.depositStatus.agreed],
+                  ["Advance paid", ledger.depositStatus.advance],
+                  ["Paid later", ledger.depositStatus.paidLater],
+                  ["Balance", ledger.depositStatus.balance],
+                ] as const
+              ).map(([label, value]) => (
+                <div key={label}>
+                  <dt className="text-xs text-slate-500">{label}</dt>
+                  <dd className={label === "Balance" && value > 0 ? "font-semibold text-amber-700 tabular-nums" : "font-medium tabular-nums"}>
+                    {formatMoney(value)}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          )}
           {ledger.deposit.length === 0 ? (
             <EmptyState compact icon={<IconWallet />} title="No deposit entries" />
           ) : (

@@ -11,7 +11,8 @@ const reminderLogSchema = new Schema({
   tenant: { type: Schema.Types.ObjectId, ref: "Tenant", required: true, index: true },
   sentAt: { type: Date, required: true, default: () => new Date() },
   message: { type: String, required: true },
-  kind: { type: String, enum: ["overdue", "due_soon"], required: true },
+  /** "deposit" = a reminder about the security-deposit balance (not rent). */
+  kind: { type: String, enum: ["overdue", "due_soon", "deposit"], required: true },
   /** Normalized phone digits the link was addressed to. */
   phone: { type: String, required: true },
   /** Admin who opened the reminder. */
@@ -21,6 +22,9 @@ const reminderLogSchema = new Schema({
 reminderLogSchema.index({ rental: 1, sentAt: -1 });
 
 export type ReminderLogDoc = InferSchemaType<typeof reminderLogSchema>;
+
+// Gained the "deposit" kind; in dev, recompile on hot reload so a stale cached model doesn't reject it.
+if (process.env.NODE_ENV !== "production" && mongoose.models.ReminderLog) mongoose.deleteModel("ReminderLog");
 
 export const ReminderLog: Model<ReminderLogDoc> =
   (mongoose.models.ReminderLog as Model<ReminderLogDoc>) || mongoose.model<ReminderLogDoc>("ReminderLog", reminderLogSchema);

@@ -12,6 +12,7 @@ import { NO_PHONE_TOOLTIP, normalizePhone } from "@/lib/whatsapp";
 import { Tenant } from "@/models/Tenant";
 import { ConfirmAction } from "@/components/form";
 import {
+  Badge,
   ButtonLink,
   Card,
   DetailList,
@@ -105,7 +106,10 @@ export default async function TenantPage({ params }: { params: Promise<{ id: str
                         )}
                       </Td>
                       <Td>
-                        <StatusBadge status={rentalBadge(l)} />
+                        <span className="flex flex-wrap gap-1.5">
+                          <StatusBadge status={rentalBadge(l)} />
+                          {l.depositBalance > 0 && <Badge tone="amber">Deposit balance {formatMoney(l.depositBalance)}</Badge>}
+                        </span>
                       </Td>
                       {reminders.size > 0 && (
                         <Td className="text-right">

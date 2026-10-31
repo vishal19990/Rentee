@@ -8,8 +8,8 @@ import { connectDB } from "@/lib/db";
 import { syncNotificationsSafe } from "@/lib/notification-sync";
 import { dateFromISO } from "@/lib/format";
 import { localToday, monthOf, rentalStatus, toISODate } from "@/lib/rent";
-import { moveOutSchema, parseForm, rentalSchema, rentalUpdateSchema, type ActionState } from "@/lib/validation";
-import { ensureDepositLedger } from "@/lib/deposit-store";
+import { moveOutSchema, parseForm, rentalCreateSchema, rentalUpdateSchema, type ActionState } from "@/lib/validation";
+import { agreedDepositGuard, ensureDepositLedger } from "@/lib/deposit-store";
 import { linkConvertedRental } from "@/lib/enquiry-data";
 import { Charge } from "@/models/Charge";
 import { DepositEntry } from "@/models/DepositEntry";
@@ -46,9 +46,9 @@ function storedStatus(moveOutDate: string | null, today = localToday()) {
 
 export async function createRental(_prev: ActionState, fd: FormData): Promise<ActionState> {
   await requireUser();
-  const parsed = parseForm(rentalSchema, fd);
+  const parsed = parseForm(rentalCreateSchema(localToday()), fd);
   if (!parsed.success) return parsed.state;
-  const { propertyId, tenantId, moveInDate, ...terms } = parsed.data;
+  const { propertyId, tenantId, moveInDate, advance, ...terms } = parsed.data;
   const values = parsed.values;
   const fail = (field: string, msg: string): ActionState => ({
     ok: false,
@@ -78,6 +78,8 @@ export async function createRental(_prev: ActionState, fd: FormData): Promise<Ac
       moveOutDate: null,
       status: "active",
       ...terms,
+      // The deposit is paid as an advance (possibly 0) plus later part payments.
+      depositAdvance: { amount: advance.amount, date: dateFromISO(advance.date) },
     });
     id = String(doc._id);
   } catch (err) {
@@ -85,7 +87,7 @@ export async function createRental(_prev: ActionState, fd: FormData): Promise<Ac
     if (isDuplicateKey(err)) return fail("propertyId", ACTIVE_EXISTS);
     throw err;
   }
-  // Deposit > 0 opens the deposit ledger with a "received" entry.
+  // An advance > 0 opens the deposit ledger with a "received" entry on the advance date.
   await ensureDepositLedger(id);
   await linkConvertedRental(tenantId, propertyId, id); // enquiry converted to this tenant -> link the rental
   await syncNotificationsSafe({ scope: { rentalIds: [id] } });
@@ -144,9 +146,13 @@ export async function updateRental(id: string, _prev: ActionState, fd: FormData)
     }
   }
 
+  // Advance-flow rentals: the agreed deposit can't drop below what was already received.
+  const agreedError = await agreedDepositGuard(_id, terms.deposit);
+  if (agreedError) return { ok: false, message: agreedError, fieldErrors: { deposit: [agreedError] }, values };
+
   try {
-    await Rental.updateOne(
-      { _id },
+    const res = await Rental.updateOne(
+      { _id, $or: [{ depositAdvance: null }, { depositReceived: { $exists: false } }, { depositReceived: { $lte: terms.deposit } }] },
       {
         moveInDate: dateFromISO(moveInDate),
         moveOutDate: moveOutDate ? dateFromISO(moveOutDate) : null,
@@ -154,6 +160,11 @@ export async function updateRental(id: string, _prev: ActionState, fd: FormData)
         ...terms,
       },
     );
+    if (res.matchedCount === 0) {
+      // A deposit payment landed meanwhile and the new agreed amount is now below it.
+      const msg = (await agreedDepositGuard(_id, terms.deposit)) ?? "The deposit changed meanwhile. Please try again.";
+      return { ok: false, message: msg, fieldErrors: { deposit: [msg] }, values };
+    }
   } catch (err) {
     if (isDuplicateKey(err)) return { ok: false, message: ACTIVE_EXISTS, fieldErrors: { moveOutDate: [ACTIVE_EXISTS] }, values };
     throw err;
