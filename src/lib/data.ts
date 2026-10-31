@@ -49,6 +49,8 @@ export type RentalRow = {
   tenantId: string;
   tenantName: string;
   tenantPhone: string;
+  /** Profile photo id (see components/tenant-avatar.tsx), or null. */
+  tenantPhoto: string | null;
   moveInDate: string;
   moveOutDate: string | null;
   /** Original rent agreed at move-in (stored on the rental, never overwritten). */
@@ -85,7 +87,7 @@ export async function loadRentals(filter: Record<string, unknown> = {}, today = 
   const advanceIds = rentals.filter((r) => r.depositAdvance).map((r) => r._id);
   const [properties, tenants, payments, changes, charges, depositIn] = await Promise.all([
     Property.find({ _id: { $in: rentals.map((r) => r.property) } }).select("name").lean(),
-    Tenant.find({ _id: { $in: rentals.map((r) => r.tenant) } }).select("name phone").lean(),
+    Tenant.find({ _id: { $in: rentals.map((r) => r.tenant) } }).select("name phone photo").lean(),
     Payment.find({ rental: { $in: rentalIds } }).select("rental forMonth amount").lean(),
     RentChange.find({ rental: { $in: rentalIds } }).sort({ effectiveMonth: 1 }).select("rental effectiveMonth monthlyRent").lean(),
     Charge.find({ rental: { $in: rentalIds } }).sort({ month: 1, createdAt: 1 }).select("rental month type amount").lean(),
@@ -100,6 +102,7 @@ export async function loadRentals(filter: Record<string, unknown> = {}, today = 
   const propName = new Map(properties.map((p) => [toId(p._id), p.name]));
   const tenantName = new Map(tenants.map((t) => [toId(t._id), t.name]));
   const tenantPhone = new Map(tenants.map((t) => [toId(t._id), t.phone]));
+  const tenantPhoto = new Map(tenants.map((t) => [toId(t._id), t.photo ? toId(t.photo) : null]));
   const paymentsByRental = new Map<string, { forMonth: string; amount: number }[]>();
   for (const p of payments) {
     const k = toId(p.rental);
@@ -132,6 +135,7 @@ export async function loadRentals(filter: Record<string, unknown> = {}, today = 
       tenantId: toId(r.tenant),
       tenantName: tenantName.get(toId(r.tenant)) ?? "(deleted tenant)",
       tenantPhone: tenantPhone.get(toId(r.tenant)) ?? "",
+      tenantPhoto: tenantPhoto.get(toId(r.tenant)) ?? null,
       moveInDate: toISODate(r.moveInDate),
       moveOutDate: r.moveOutDate ? toISODate(r.moveOutDate) : null,
       monthlyRent: r.monthlyRent,

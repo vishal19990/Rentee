@@ -7,6 +7,7 @@ import { formatMoney } from "@/lib/money";
 import { Tenant } from "@/models/Tenant";
 import { Badge, ButtonLink, EmptyState, FilterTabs, PageHeader, StatusBadge, Table, TBody, Td, Th, THead } from "@/components/ui";
 import { IconPlus, IconUsers } from "@/components/icons";
+import { TenantAvatar } from "@/components/tenant-avatar";
 
 export const metadata: Metadata = { title: "Tenants" };
 
@@ -71,7 +72,8 @@ export default async function TenantsPage({ searchParams }: { searchParams: Prom
                 return (
                   <tr key={toId(t._id)} className="hover:bg-slate-50/60">
                     <Td>
-                      <Link href={`/tenants/${toId(t._id)}`} className="font-medium text-slate-900 hover:text-brand-700">
+                      <Link href={`/tenants/${toId(t._id)}`} className="flex items-center gap-3 font-medium text-slate-900 hover:text-brand-700">
+                        <TenantAvatar tenantId={toId(t._id)} photo={t.photo ? toId(t.photo) : null} name={t.name} />
                         {t.name}
                       </Link>
                     </Td>

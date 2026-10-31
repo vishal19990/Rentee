@@ -27,6 +27,7 @@ import {
   IconWallet,
   IconWrench,
 } from "@/components/icons";
+import { TenantAvatar } from "@/components/tenant-avatar";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
@@ -178,9 +179,12 @@ export default async function DashboardPage() {
               {movingOut.map((l) => (
                 <li key={l.id}>
                   <Link href={`/rentals/${l.id}`} className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-slate-50">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-slate-900">{l.propertyName}</p>
-                      <p className="truncate text-xs text-slate-500">{l.tenantName}</p>
+                    <div className="flex min-w-0 items-center gap-3">
+                      <TenantAvatar tenantId={l.tenantId} photo={l.tenantPhoto} name={l.tenantName} />
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-slate-900">{l.propertyName}</p>
+                        <p className="truncate text-xs text-slate-500">{l.tenantName}</p>
+                      </div>
                     </div>
                     <span className="shrink-0 text-xs font-medium text-amber-700">{formatDate(l.moveOutDate)}</span>
                   </Link>
@@ -205,13 +209,16 @@ export default async function DashboardPage() {
                 const months = l.schedule.filter((m) => m.pastDue && m.balance > 0);
                 return (
                   <li key={l.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5">
-                    <div className="min-w-0">
-                      <Link href={`/rentals/${l.id}`} className="text-sm font-medium text-slate-900 hover:text-brand-700">
-                        {l.propertyName}
-                      </Link>
-                      <p className="text-xs text-slate-500">
-                        {l.tenantName} · {months.map((m) => formatMonth(m.month)).join(", ")}
-                      </p>
+                    <div className="flex min-w-0 items-center gap-3">
+                      <TenantAvatar tenantId={l.tenantId} photo={l.tenantPhoto} name={l.tenantName} />
+                      <div className="min-w-0">
+                        <Link href={`/rentals/${l.id}`} className="text-sm font-medium text-slate-900 hover:text-brand-700">
+                          {l.propertyName}
+                        </Link>
+                        <p className="text-xs text-slate-500">
+                          {l.tenantName} · {months.map((m) => formatMonth(m.month)).join(", ")}
+                        </p>
+                      </div>
                     </div>
                     <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
                       <span className="text-sm font-semibold text-rose-600 tabular-nums">

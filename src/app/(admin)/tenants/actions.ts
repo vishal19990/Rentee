@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { deleteFile } from "@/lib/file-store";
 import { requireUser } from "@/lib/auth";
 import { asObjectId, syncRentalStatuses } from "@/lib/data";
 import { connectDB } from "@/lib/db";
@@ -60,8 +61,9 @@ export async function deleteTenant(id: string): Promise<ActionState> {
   if (await Rental.exists({ tenant: _id })) {
     return { ok: false, message: "This tenant has rentals, so they can't be deleted. Archive instead." };
   }
-  const res = await Tenant.deleteOne({ _id });
-  if (res.deletedCount === 0) return NOT_FOUND;
+  const gone = await Tenant.findOneAndDelete({ _id }).select("photo").lean();
+  if (!gone) return NOT_FOUND;
+  await deleteFile("avatars", gone.photo);
   // F7: a deleted tenant's documents (records + GridFS files) go with them.
   const docs = await TenantDocument.find({ tenant: _id }).select("file").lean();
   await TenantDocument.deleteMany({ tenant: _id });

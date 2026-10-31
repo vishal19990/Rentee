@@ -10,6 +10,7 @@ import { Payment } from "@/models/Payment";
 import { ButtonLink, EmptyState, PageHeader, Table, TBody, Td, Th, THead } from "@/components/ui";
 import { IconArrowLeft, IconPlus, IconWallet } from "@/components/icons";
 import { ReceiptLink } from "@/components/receipt-link";
+import { TenantAvatar } from "@/components/tenant-avatar";
 
 export const metadata: Metadata = { title: "Payments" };
 
@@ -82,9 +83,12 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
                     <Td className="whitespace-nowrap">{formatDate(p.paidOn)}</Td>
                     <Td>
                       {l ? (
-                        <Link href={`/rentals/${l.id}`} className="block">
-                          <span className="font-medium text-slate-900 hover:text-brand-700">{l.propertyName}</span>
-                          <span className="block text-xs text-slate-500">{l.tenantName}</span>
+                        <Link href={`/rentals/${l.id}`} className="flex items-center gap-3">
+                          <TenantAvatar tenantId={l.tenantId} photo={l.tenantPhoto} name={l.tenantName} />
+                          <span className="min-w-0">
+                            <span className="block font-medium text-slate-900 hover:text-brand-700">{l.propertyName}</span>
+                            <span className="block text-xs text-slate-500">{l.tenantName}</span>
+                          </span>
                         </Link>
                       ) : (
                         "—"

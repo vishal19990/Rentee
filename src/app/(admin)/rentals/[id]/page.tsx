@@ -54,6 +54,7 @@ import {
 } from "../ledger-actions";
 import { DepositReminderButton } from "@/components/deposit-reminder-button";
 import { ChargeForm } from "./charge-form";
+import { TenantAvatar } from "@/components/tenant-avatar";
 
 export const metadata: Metadata = { title: "Rental" };
 
@@ -121,7 +122,8 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
         description={
           <>
             Tenant:{" "}
-            <Link href={`/tenants/${r.tenantId}`} className="link">
+            <Link href={`/tenants/${r.tenantId}`} className="link inline-flex items-center gap-1.5 align-middle">
+              <TenantAvatar tenantId={r.tenantId} photo={r.tenantPhoto} name={r.tenantName} size="xs" />
               {r.tenantName}
             </Link>{" "}
             · Moved in {formatDate(r.moveInDate)}
@@ -638,7 +640,7 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
             <DetailList
               items={[
                 { label: "Property", value: <Link className="link" href={`/properties/${r.propertyId}`}>{r.propertyName}</Link> },
-                { label: "Tenant", value: <Link className="link" href={`/tenants/${r.tenantId}`}>{r.tenantName}</Link> },
+                { label: "Tenant", value: <Link className="link inline-flex items-center gap-2" href={`/tenants/${r.tenantId}`}><TenantAvatar tenantId={r.tenantId} photo={r.tenantPhoto} name={r.tenantName} size="sm" />{r.tenantName}</Link> },
                 { label: "Moved in", value: formatDate(r.moveInDate) },
                 { label: r.status === "moved_out" ? "Moved out" : "Move-out", value: r.moveOutDate ? formatDate(r.moveOutDate) : "Not scheduled" },
                 { label: "Original rent", value: formatMoney(r.monthlyRent) },

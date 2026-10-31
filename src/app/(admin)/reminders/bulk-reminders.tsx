@@ -23,6 +23,7 @@ import { NO_PHONE_TOOLTIP } from "@/lib/whatsapp";
 import { Badge, Card, EmptyState } from "@/components/ui";
 import { IconCheck, IconX } from "@/components/icons";
 import { logReminder } from "./actions";
+import { TenantAvatar } from "@/components/tenant-avatar";
 
 type Queued = BulkReminderItem & { url: string };
 type Outcome = { outcome: SendOutcome; error?: string };
@@ -159,11 +160,14 @@ export function BulkReminders({ items: initialItems, serverNow }: { items: BulkR
           {current ? (
             <div className="space-y-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-slate-900">{current.tenantName}</p>
-                  <p className="text-xs text-slate-500">
-                    {current.propertyName} · {current.months}
-                  </p>
+                <div className="flex min-w-0 items-center gap-3">
+                  <TenantAvatar tenantId={current.tenantId} photo={current.tenantPhoto} name={current.tenantName} size="md" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-900">{current.tenantName}</p>
+                    <p className="text-xs text-slate-500">
+                      {current.propertyName} · {current.months}
+                    </p>
+                  </div>
                 </div>
                 <span
                   className={clsx(
@@ -288,7 +292,8 @@ export function BulkReminders({ items: initialItems, serverNow }: { items: BulkR
                   />
                   <div className="flex min-w-0 flex-1 flex-wrap items-start justify-between gap-x-4 gap-y-1">
                     <label htmlFor={id} className={clsx("min-w-0", sendable && !sending && "cursor-pointer")}>
-                      <span className="block text-sm font-medium text-slate-900">
+                      <span className="flex items-center gap-2 text-sm font-medium text-slate-900">
+                        <TenantAvatar tenantId={item.tenantId} photo={item.tenantPhoto} name={item.tenantName} size="xs" />
                         {item.tenantName}
                         <span className="font-normal text-slate-500"> · {item.propertyName}</span>
                       </span>

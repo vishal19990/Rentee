@@ -33,6 +33,7 @@ import {
   setPropertyArchived,
   uploadPropertyPhoto,
 } from "../actions";
+import { TenantAvatar } from "@/components/tenant-avatar";
 
 export const metadata: Metadata = { title: "Property" };
 
@@ -85,7 +86,7 @@ export default async function PropertyPage({ params }: { params: Promise<{ id: s
               <div className="space-y-5">
                 <DetailList
                   items={[
-                    { label: "Tenant", value: <Link className="link" href={`/tenants/${active.tenantId}`}>{active.tenantName}</Link> },
+                    { label: "Tenant", value: <Link className="link inline-flex items-center gap-2" href={`/tenants/${active.tenantId}`}><TenantAvatar tenantId={active.tenantId} photo={active.tenantPhoto} name={active.tenantName} size="sm" />{active.tenantName}</Link> },
                     { label: "Rent", value: `${formatMoney(active.currentRent)} / month, due day ${active.dueDay}` },
                     { label: "Moved in", value: formatDate(active.moveInDate) },
                     {
@@ -177,7 +178,8 @@ export default async function PropertyPage({ params }: { params: Promise<{ id: s
                   {rentals.map((l) => (
                     <tr key={l.id} className="hover:bg-slate-50/60">
                       <Td>
-                        <Link href={`/rentals/${l.id}`} className="link">
+                        <Link href={`/rentals/${l.id}`} className="link inline-flex items-center gap-2">
+                          <TenantAvatar tenantId={l.tenantId} photo={l.tenantPhoto} name={l.tenantName} size="xs" />
                           {l.tenantName}
                         </Link>
                       </Td>

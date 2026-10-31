@@ -27,6 +27,8 @@ import {
 } from "@/components/ui";
 import { WhatsAppReminderButton } from "@/components/whatsapp-button";
 import { DocumentsCard } from "@/components/documents-card";
+import { TenantAvatar } from "@/components/tenant-avatar";
+import { TenantPhotoUploader } from "@/components/tenant-photo-uploader";
 import { IconArchive, IconFile, IconPencil, IconPlus, IconTrash } from "@/components/icons";
 import { deleteTenant, setTenantArchived } from "../actions";
 
@@ -53,6 +55,7 @@ export default async function TenantPage({ params }: { params: Promise<{ id: str
         back={{ href: "/tenants", label: "Tenants" }}
         title={
           <span className="flex flex-wrap items-center gap-3">
+            <TenantAvatar tenantId={id} photo={t.photo ? String(t.photo) : null} name={t.name} size="md" />
             {t.name}
             {t.archived && <StatusBadge status="archived" />}
           </span>
@@ -126,6 +129,9 @@ export default async function TenantPage({ params }: { params: Promise<{ id: str
         </div>
         <div className="space-y-6">
           <Card title="Details">
+            <div className="mb-5">
+              <TenantPhotoUploader tenantId={id} name={t.name} photo={t.photo ? String(t.photo) : null} />
+            </div>
             <DetailList
               items={[
                 {

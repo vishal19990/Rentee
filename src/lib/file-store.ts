@@ -8,8 +8,9 @@ import { connectDB } from "./db";
  * ever served through authenticated route handlers.
  *   - "bills": expense bill attachments (F2)
  *   - "tours": 360° virtual tour room photos and thumbnails
+ *   - "avatars": tenant profile photos
  */
-export type FileBucket = "bills" | "tours";
+export type FileBucket = "bills" | "tours" | "avatars";
 
 async function bucket(name: FileBucket) {
   await connectDB();

@@ -7,6 +7,7 @@ import { formatDate } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
 import { Badge, ButtonLink, EmptyState, FilterTabs, PageHeader, StatusBadge, Table, TBody, Td, Th, THead } from "@/components/ui";
 import { IconFile, IconPlus } from "@/components/icons";
+import { TenantAvatar } from "@/components/tenant-avatar";
 
 export const metadata: Metadata = { title: "Rentals" };
 
@@ -73,7 +74,8 @@ export default async function RentalsPage({ searchParams }: { searchParams: Prom
                     </Link>
                   </Td>
                   <Td>
-                    <Link href={`/tenants/${r.tenantId}`} className="text-slate-600 hover:text-brand-700">
+                    <Link href={`/tenants/${r.tenantId}`} className="flex items-center gap-2 text-slate-600 hover:text-brand-700">
+                      <TenantAvatar tenantId={r.tenantId} photo={r.tenantPhoto} name={r.tenantName} size="xs" />
                       {r.tenantName}
                     </Link>
                   </Td>

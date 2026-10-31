@@ -25,6 +25,8 @@ export type BulkReminderItem = {
   rentalId: string;
   tenantId: string;
   tenantName: string;
+  /** Profile photo id, or null (initials are shown). */
+  tenantPhoto: string | null;
   propertyName: string;
   kind: ReminderKind;
   /** Outstanding amount the reminder covers (minor units). */
@@ -41,7 +43,7 @@ export type BulkReminderItem = {
 
 /** What the page knows about each rental: its schedule plus the built reminder button props. */
 export type BulkSource = {
-  rental: ReminderRental & { id: string; tenantId: string; tenantName: string; propertyName: string };
+  rental: ReminderRental & { id: string; tenantId: string; tenantName: string; tenantPhoto?: string | null; propertyName: string };
   button: { url: string | null; message: string; lastRemindedAt: string | null } | undefined;
 };
 
@@ -69,6 +71,7 @@ export function buildBulkItems(
       rentalId: rental.id,
       tenantId: rental.tenantId,
       tenantName: rental.tenantName,
+      tenantPhoto: rental.tenantPhoto ?? null,
       propertyName: rental.propertyName,
       kind: due.kind,
       amount: due.amount,
