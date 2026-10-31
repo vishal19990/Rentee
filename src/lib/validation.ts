@@ -212,7 +212,9 @@ export const rentalSchema = z.object({
 
 /**
  * New rental with the deposit advance: "Advance received" (empty = the whole deposit quoted,
- * 0 = none yet) and "Advance date" (empty = today; may be before move-in, never after today).
+ * 0 = none yet) and "Advance date" (empty = the move-in date, or today if move-in is later; may
+ * be before move-in, never after today). Defaulting to move-in keeps a deposit for an existing
+ * tenant (move-in in the past) labelled "Advance" rather than a later "Part payment".
  */
 export const rentalCreateSchema = (today: string) =>
   rentalSchema
@@ -222,7 +224,7 @@ export const rentalCreateSchema = (today: string) =>
     })
     .transform((v, ctx) => {
       const amount = v.depositAdvance ?? v.deposit;
-      const date = v.depositAdvanceDate ?? today;
+      const date = v.depositAdvanceDate ?? (v.moveInDate < today ? v.moveInDate : today);
       if (amount > v.deposit) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["depositAdvance"], message: "Advance can't be more than the deposit quoted" });
       }

@@ -54,12 +54,13 @@ describe("deposit advance and part payments", () => {
 
   it("create form: advance amount and date are taken as entered (may be before move-in)", () => {
     const res = rentalCreateSchema(TODAY).safeParse(rentalForm({ depositAdvance: "10000", depositAdvanceDate: "2026-10-10" }));
+
     expect(res.success && res.data.advance).toEqual({ amount: R(10000), date: "2026-10-10" });
   });
 
-  it("create form: empty advance defaults to the whole deposit, dated today", () => {
+  it("create form: empty advance defaults to the whole deposit, dated at move-in", () => {
     const res = rentalCreateSchema(TODAY).safeParse(rentalForm());
-    expect(res.success && res.data.advance).toEqual({ amount: R(50000), date: TODAY });
+    expect(res.success && res.data.advance).toEqual({ amount: R(50000), date: MOVE_IN });
   });
 
   it("move-in day payment is also an Advance: advance 15,000, balance 35,000 (acceptance)", () => {
@@ -182,5 +183,19 @@ describe("deposit receipts", () => {
     expect(verifyReceiptToken(t, SECRET).ok).toBe(false);
     expect(verifyDepositReceiptToken(signReceiptToken(ID, SECRET), SECRET).ok).toBe(false);
     expect(verifyDepositReceiptToken(`${t}x`, SECRET).ok).toBe(false);
+  });
+});
+
+describe("advance date default", () => {
+  it("empty advance date uses the move-in date when move-in is in the past", () => {
+    const res = rentalCreateSchema(TODAY).safeParse(rentalForm({ depositAdvance: "10000" }));
+    expect(res.success).toBe(true);
+    if (res.success) expect(res.data.advance).toEqual({ amount: R(10000), date: MOVE_IN });
+  });
+
+  it("empty advance date uses today when move-in is in the future", () => {
+    const res = rentalCreateSchema(TODAY).safeParse(rentalForm({ moveInDate: "2026-11-15", depositAdvance: "10000" }));
+    expect(res.success).toBe(true);
+    if (res.success) expect(res.data.advance.date).toBe(TODAY);
   });
 });

@@ -12,6 +12,8 @@ export type RentalDefaults = {
   deposit?: number;
   /** New rentals: default advance date (today). */
   depositAdvanceDate?: string;
+  /** Latest allowed advance date (today). */
+  advanceMaxDate?: string;
   dueDay?: number;
 };
 
@@ -92,8 +94,8 @@ export function RentalForm({
               label="Advance date"
               type="date"
               defaultValue={defaults.depositAdvanceDate}
-              max={defaults.depositAdvanceDate}
-              hint="May be before the move-in date (paid at booking)."
+              max={defaults.advanceMaxDate}
+              hint="Leave empty to use the move-in date. Can be earlier if it was paid at booking."
             />
           </>
         )}
