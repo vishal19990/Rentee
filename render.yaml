@@ -26,4 +26,4 @@ services:
       - key: TZ # "today" for due/overdue dates follows this timezone
         value: Asia/Kolkata
       - key: APP_URL
-        sync: false # your public URL, e.g. https://rentee.onrender.com (used in receipt and pay links)
+        sync: false # your public URL, e.g. https://rentee.onrender.com (receipt/pay links and the Claude MCP connector's OAuth URLs)

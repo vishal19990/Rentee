@@ -72,16 +72,22 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] OAuth pure helpers + tests (every matrix row that is pure: PKCE, redirect validation, scope narrowing, rotation/reuse logic)
-- [ ] models, DCR, authorize (consent UI), token, revoke, metadata endpoints, middleware
-- [ ] MCP endpoint (SDK, Streamable HTTP) + bearer auth + read tools + write tools with scope check + audit
-- [ ] Connected apps settings card; README
+- [x] OAuth pure helpers + tests (every matrix row that is pure: PKCE, redirect validation, scope narrowing, rotation/reuse logic)
+- [x] models, DCR, authorize (consent UI), token, revoke, metadata endpoints, middleware
+- [x] MCP endpoint (SDK, Streamable HTTP) + bearer auth + read tools + write tools with scope check + audit
+- [x] Connected apps settings card; README
 
 **Acceptance Criteria:**
 - Given a fresh client, when it performs discovery → DCR → authorize (with login + consent) → token → `tools/list` → `tools/call get_dashboard`, then it receives the dashboard data (end-to-end script against a throwaway DB).
 - Given the MCP Inspector or an SDK client with OAuth support, when connecting to `<base>/api/mcp`, then it completes auth and lists tools.
 
 ## Implementation Notes
+
+- `@modelcontextprotocol/sdk` 1.32.2: `McpServer` + `WebStandardStreamableHTTPServerTransport` (stateless, `enableJsonResponse`), a fresh server per POST.
+- Consent posts via same-origin `fetch` to `/oauth/authorize/decision` (session + HMAC CSRF token bound to user and exact request, Origin / Sec-Fetch-Site checked) and navigates to the returned redirect, so the existing `form-action 'self'` CSP is untouched.
+- Grants = token families in `rentee_oauth_tokens` (no separate grant collection); DCR rate-limit counters reuse the login-throttle collection (`dcr:<ip>` keys).
+- Payment recording extracted to `lib/payment-store.ts` (`recordPayment`), used by the payment form and `record_rent_payment`.
+- `scripts/mcp-e2e.mjs`: throwaway mongod + `next start`, raw HTTP and SDK-client OAuth flows (73 checks).
 
 ## Spec Change Log
 

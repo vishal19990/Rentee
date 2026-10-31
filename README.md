@@ -31,7 +31,7 @@ Copy `.env.example` to `.env.local` and adjust:
 | `NEXT_PUBLIC_DEFAULT_COUNTRY_CODE` | `91` | Added to 10-digit phone numbers for WhatsApp reminders |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_NAME` | `admin@rentee.local` / `rentee123` / `Admin` | Account created by `npm run seed` (`SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` also work). On a non-local database a password **must** be set. |
 | `NEXT_DIST_DIR` | `.next` | Build output folder, e.g. to verify a build without touching a running dev server's `.next` |
-| `APP_URL` | request host | Public base URL used in shared receipt (`/r/`) and pay (`/p/`) links, e.g. `https://rentee.onrender.com`. Recommended in production. |
+| `APP_URL` | request host | Public base URL used in shared receipt (`/r/`) and pay (`/p/`) links and for the Claude connector's OAuth/MCP URLs, e.g. `https://rentee.onrender.com`. Required in production if you connect Claude. |
 | `PDF_FONTS_DIR` | `src/assets/fonts` | Where PDF fonts are read from at runtime (relative to the working directory) |
 
 ## Scripts
@@ -203,6 +203,29 @@ Then sign in on the Render URL. You can add more admins under **Settings**. Agai
 - **Storage:** Atlas M0 has 512 MB. Photos (up to 5 MB each, 12 per property), expense bills (up to 10 MB each) and tour photos (usually 2–5 MB per room) are the main consumers.
 - **Clock:** "today" (due dates, overdue) uses the server's timezone, which is UTC on Render. To use Indian time, add the environment variable `TZ=Asia/Kolkata`.
 
+## Connect Rentee to Claude
+
+Rentee includes a remote MCP server at `<APP_URL>/api/mcp`, so Claude (claude.ai, Claude Desktop, Claude Code) can answer questions about your rentals and, if you allow it, record payments and other changes. It is protected by Rentee's own OAuth 2.1 server: Claude registers itself, you sign in to Rentee and approve, and Claude gets a token tied to your admin account. The examples below use `https://rentee-4fkw.onrender.com`; use your own Rentee URL.
+
+**First, set `APP_URL` on Render** (Dashboard → rentee → Environment) to your public URL with no trailing slash, e.g. `APP_URL=https://rentee-4fkw.onrender.com`, then redeploy. Every OAuth and MCP URL (issuer, resource, metadata) is built from it; Claude rejects the connection if they don't match the address it connected to.
+
+- **claude.ai:** Settings → Connectors → **Add custom connector** → name `Rentee`, URL `https://rentee-4fkw.onrender.com/api/mcp` → Add → **Connect**. Leave the OAuth client ID/secret fields empty (Claude registers itself).
+- **Claude Desktop:** Settings → Connectors → **Add custom connector** with the same URL, then **Connect**.
+- **Claude Code:** `claude mcp add --transport http rentee https://rentee-4fkw.onrender.com/api/mcp`, then run `/mcp` in Claude Code and choose **Authenticate**.
+
+**Consent:** a Rentee page opens. Sign in if asked, check the app name and where it returns to, and choose **Allow access**. Read access is always granted. Tick **Also allow changes (record payments, add enquiries…)** only if Claude should be able to write; without it, write tools answer "requires rentee:write". A free Render service may be asleep: the first connection can take up to a minute.
+
+**What Claude can do:**
+- Read: `get_dashboard`, `list_properties`, `get_property`, `list_tenants`, `get_tenant`, `list_rentals`, `get_rental`, `list_overdue_rent`, `list_payments`, `list_expenses`, `get_profit_report`, `list_enquiries`, `get_enquiry`, `list_maintenance`, `list_notifications`, `list_agreements_expiring`. Money comes as `{ formatted: "₹15,000.00", paise: 1500000 }`; dates are ISO.
+- Write (with `rentee:write`): `record_rent_payment`, `add_deposit_payment`, `create_enquiry`, `add_enquiry_note`, `create_maintenance_request`, `update_maintenance_status`. They use the same validation as the app (payable months, deposit balance, …). There are no delete tools.
+- Never shared: tenant ID numbers, documents and their files, photos, passwords, tokens, settings secrets.
+
+**Revoke:** Settings → **Connected apps** lists each connection (app, read-only or read & changes, who allowed it, when, last used) with **Revoke**, which disconnects it immediately. The same card shows the last 20 changes made by connected apps. Deleting an admin also stops their tokens working.
+
+**How it works:** discovery via `/.well-known/oauth-protected-resource` (RFC 9728) and `/.well-known/oauth-authorization-server` (RFC 8414); dynamic client registration at `/api/oauth/register` (RFC 7591; `https://` redirect URIs, or `http://localhost` for local clients; 20 per hour per IP, at most 200 apps); `/oauth/authorize` (authorization code + PKCE S256 only, exact redirect URI match, `resource` must be the MCP URL); `/api/oauth/token` (1-hour access tokens, 30-day refresh tokens that rotate on every use — replaying an old one revokes the whole connection); `/api/oauth/revoke` (RFC 7009). Codes, tokens and client secrets are random and stored only as SHA-256 hashes (collections `rentee_oauth_*`, `rentee_mcp_audit_logs`). `/api/mcp` is a stateless Streamable HTTP endpoint; without a valid bearer token it answers 401 with `WWW-Authenticate: Bearer resource_metadata="…"`.
+
+**Test it locally:** `NEXT_DIST_DIR=.next-verify npm run build`, then `NEXT_DIST_DIR=.next-verify node scripts/mcp-e2e.mjs`. The script starts its own throwaway MongoDB (port 27391) and `next start` (port 3391), seeds demo data, runs the whole OAuth + MCP flow with raw HTTP and the official MCP SDK client, then stops both.
+
 ## Project layout
 
 ```
@@ -216,6 +239,9 @@ src/
   app/api/reports/…          authenticated Excel / PDF report downloads
   app/api/notifications/     notification poll endpoint (bell + desktop notifications)
   app/api/receipts/[id]      authenticated receipt PDF
+  app/api/mcp/               MCP connector (Streamable HTTP, OAuth bearer tokens)
+  app/api/oauth/, app/oauth/authorize, app/.well-known/  OAuth 2.1 server (register, token, revoke, consent, metadata)
+  lib/oauth/, lib/mcp/       OAuth rules + store; MCP tools
   app/r/[token], app/p/[token]  public signed receipt / UPI pay pages (no login)
   app/t/[token]              public virtual tour page + token-checked tour images (no login)
   assets/sample-tour/        generated sample 360° rooms (scripts/generate-sample-tour.mjs)

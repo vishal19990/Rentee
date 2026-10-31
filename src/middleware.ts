@@ -12,6 +12,15 @@ export async function middleware(req: NextRequest) {
   if (pathname === "/login") return NextResponse.next();
   // Public landing page (marketing only; it reads the session cookie just to pick its button).
   if (pathname === "/") return NextResponse.next();
+  // MCP connector + OAuth endpoints authenticate themselves (bearer tokens / client credentials).
+  if (
+    pathname.startsWith("/.well-known/") ||
+    pathname.startsWith("/api/oauth/") ||
+    pathname === "/api/mcp" ||
+    pathname.startsWith("/api/mcp/")
+  ) {
+    return NextResponse.next();
+  }
   // Public receipt (/r/<token>) and UPI pay (/p/<token>) links: no login, but each page only
   // renders for a valid HMAC-signed token (checked there). The path is passed on so their
   // not-found page can tell an expired link from an invalid one.
