@@ -2,7 +2,7 @@
 title: 'Rentee — store files in Cloudflare R2 (private), keep encryption'
 type: 'feature'
 created: '2026-11-01'
-status: 'in-progress'
+status: 'draft'
 route: 'dispatch'
 review_loop_iteration: 0
 context:
@@ -80,3 +80,5 @@ context:
 - `npx tsc --noEmit` -- expected: clean
 - `npm test` -- expected: all pass
 - `NEXT_DIST_DIR=.next-verify npm run build` -- expected: success (then delete `.next-verify`)
+
+- 2026-11-01: Parked by the human (Cloudflare R2 needs a card). Unverified WIP kept on branch `parked/r2-file-storage`; not merged into main.
