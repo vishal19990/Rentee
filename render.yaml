@@ -29,3 +29,7 @@ services:
         sync: false # your public URL, e.g. https://rentee.onrender.com (receipt/pay links and the Claude MCP connector's OAuth URLs)
       - key: FILES_ENCRYPTION_KEY
         sync: false # 32+ random chars; same value as your local .env. Back it up — lost key = unreadable documents
+      - key: TURNSTILE_SITE_KEY
+        sync: false # Cloudflare Turnstile widget site key (optional; login robot check)
+      - key: TURNSTILE_SECRET_KEY
+        sync: false # Cloudflare Turnstile secret key (optional; both keys needed)

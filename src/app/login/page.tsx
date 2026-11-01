@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { ActionForm, Hidden, SubmitButton, TextField } from "@/components/form";
 import { Logo } from "@/components/shell";
+import { TurnstileWidget } from "@/components/turnstile-widget";
+import { turnstileSiteKey } from "@/lib/turnstile";
 import { login } from "./actions";
 
 export const metadata: Metadata = { title: "Sign in" };
@@ -10,6 +12,7 @@ export const metadata: Metadata = { title: "Sign in" };
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
   if (await getCurrentUser()) redirect("/dashboard");
   const { next } = await searchParams;
+  const siteKey = turnstileSiteKey();
 
   return (
     <div className="relative grid min-h-dvh place-items-center overflow-hidden bg-slate-950 px-4 py-10">
@@ -28,6 +31,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
             <Hidden name="next" value={next ?? ""} />
             <TextField name="email" label="Email" type="email" autoComplete="email" placeholder="you@example.com" />
             <TextField name="password" label="Password" type="password" autoComplete="current-password" />
+            {siteKey && <TurnstileWidget siteKey={siteKey} />}
             <SubmitButton className="w-full" pendingLabel="Signing in…">
               Sign in
             </SubmitButton>

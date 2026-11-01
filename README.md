@@ -33,6 +33,7 @@ Copy `.env.example` to `.env.local` and adjust:
 | `NEXT_DIST_DIR` | `.next` | Build output folder, e.g. to verify a build without touching a running dev server's `.next` |
 | `APP_URL` | request host | Public base URL used in shared receipt (`/r/`) and pay (`/p/`) links and for the Claude connector's OAuth/MCP URLs, e.g. `https://rentee.onrender.com`. Required in production if you connect Claude. |
 | `FILES_ENCRYPTION_KEY` | — | **Required in production for uploads.** Encrypts tenant documents, tenant photos and expense bills at rest (AES-256-GCM, `src/lib/file-crypto.ts`). 32+ random characters (`openssl rand -base64 32`); same value locally and on Render. Keep a backup — without it encrypted files can't be opened. Encrypt files uploaded before this with `npx tsx scripts/encrypt-files.ts --confirm`. |
+| `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | — | Optional. Cloudflare Turnstile "I'm not a robot" check on the login page (Cloudflare → Turnstile → Add widget, hostname = your site). On only when both are set; checked on the server before the password (fails closed if Cloudflare is unreachable). Read at runtime, so changing them needs a restart, not a rebuild. |
 | `PDF_FONTS_DIR` | `src/assets/fonts` | Where PDF fonts are read from at runtime (relative to the working directory) |
 
 ## Scripts

@@ -13,6 +13,7 @@ import {
   lockedMessage,
   type Throttle,
 } from "@/lib/login-throttle";
+import { TURNSTILE_FIELD, TURNSTILE_MESSAGES, turnstileSiteKey, verifyTurnstile } from "@/lib/turnstile";
 import { loginSchema, parseForm, type ActionState } from "@/lib/validation";
 import { LoginThrottle } from "@/models/LoginThrottle";
 import { User } from "@/models/User";
@@ -52,6 +53,13 @@ export async function login(_prev: ActionState, fd: FormData): Promise<ActionSta
   const [emailT, ipT] = await Promise.all([readThrottle(emailKey), readThrottle(ipKey)]);
   const wait = Math.max(lockMinutesLeft(emailT, now), lockMinutesLeft(ipT, now));
   if (wait > 0) return { ok: false, message: lockedMessage(wait), values: { email } };
+
+  // Cloudflare Turnstile (when configured): bots never get to try a password.
+  if (turnstileSiteKey()) {
+    const ip = clientIp(h.get("x-forwarded-for"), h.get("x-real-ip"));
+    const check = await verifyTurnstile(String(fd.get(TURNSTILE_FIELD) ?? ""), ip);
+    if (!check.ok) return { ok: false, message: TURNSTILE_MESSAGES[check.reason], values: { email } };
+  }
 
   const user = await User.findOne({ email }).lean();
   const ok = await verifyPassword(password, user?.passwordHash ?? DUMMY_HASH);
