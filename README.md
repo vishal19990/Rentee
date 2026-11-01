@@ -32,6 +32,7 @@ Copy `.env.example` to `.env.local` and adjust:
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_NAME` | `admin@rentee.local` / `rentee123` / `Admin` | Account created by `npm run seed` (`SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` also work). On a non-local database a password **must** be set. |
 | `NEXT_DIST_DIR` | `.next` | Build output folder, e.g. to verify a build without touching a running dev server's `.next` |
 | `APP_URL` | request host | Public base URL used in shared receipt (`/r/`) and pay (`/p/`) links and for the Claude connector's OAuth/MCP URLs, e.g. `https://rentee.onrender.com`. Required in production if you connect Claude. |
+| `FILES_ENCRYPTION_KEY` | — | **Required in production for uploads.** Encrypts tenant documents, tenant photos and expense bills at rest (AES-256-GCM, `src/lib/file-crypto.ts`). 32+ random characters (`openssl rand -base64 32`); same value locally and on Render. Keep a backup — without it encrypted files can't be opened. Encrypt files uploaded before this with `npx tsx scripts/encrypt-files.ts --confirm`. |
 | `PDF_FONTS_DIR` | `src/assets/fonts` | Where PDF fonts are read from at runtime (relative to the working directory) |
 
 ## Scripts

@@ -1,6 +1,7 @@
 import "server-only";
 import mongoose, { Types } from "mongoose";
 import { connectDB } from "./db";
+import { openFromStorage, sealForStorage } from "./file-crypto";
 
 /**
  * Generic GridFS storage for attachments (same approach as photo-store.ts): files live in
@@ -11,6 +12,9 @@ import { connectDB } from "./db";
  *   - "avatars": tenant profile photos
  */
 export type FileBucket = "bills" | "tours" | "avatars";
+
+/** Buckets holding personal data: encrypted at rest with FILES_ENCRYPTION_KEY (see file-crypto.ts). */
+const ENCRYPTED_BUCKETS: ReadonlySet<FileBucket> = new Set(["bills", "avatars"]);
 
 async function bucket(name: FileBucket) {
   await connectDB();
@@ -30,7 +34,7 @@ export async function saveFile(
     const up = b.openUploadStream(meta.filename, { metadata: { contentType: meta.contentType } });
     up.once("finish", () => resolve(up.id as Types.ObjectId));
     up.once("error", reject);
-    up.end(bytes);
+    up.end(ENCRYPTED_BUCKETS.has(name) ? sealForStorage(bytes) : bytes);
   });
 }
 
@@ -40,7 +44,8 @@ export async function readFile(name: FileBucket, id: Types.ObjectId): Promise<Bu
   if (!file) return null;
   const chunks: Buffer[] = [];
   for await (const chunk of b.openDownloadStream(file._id)) chunks.push(chunk as Buffer);
-  return Buffer.concat(chunks);
+  const data = Buffer.concat(chunks);
+  return ENCRYPTED_BUCKETS.has(name) ? openFromStorage(data) : data;
 }
 
 export async function deleteFile(name: FileBucket, id: Types.ObjectId | null | undefined): Promise<void> {

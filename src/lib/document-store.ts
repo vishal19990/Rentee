@@ -1,11 +1,13 @@
 import "server-only";
 import mongoose, { Types } from "mongoose";
 import { connectDB } from "./db";
+import { openFromStorage, sealForStorage } from "./file-crypto";
 
 /**
  * Tenant documents (Aadhaar, PAN, agreements…) live in their own MongoDB GridFS bucket
  * "documents", separate from property photos. They are only ever served to signed-in admins
- * through /api/documents/[id]; there is no public URL.
+ * through /api/documents/[id]; there is no public URL. Contents are encrypted at rest with
+ * FILES_ENCRYPTION_KEY (see file-crypto.ts); older unencrypted files are still readable.
  */
 const BUCKET = "documents";
 
@@ -24,7 +26,7 @@ export async function saveDocumentFile(bytes: Buffer, contentType: string): Prom
     const up = b.openUploadStreamWithId(id, id.toHexString(), { metadata: { contentType } });
     up.once("finish", () => resolve());
     up.once("error", reject);
-    up.end(bytes);
+    up.end(sealForStorage(bytes));
   });
   return id;
 }
@@ -42,5 +44,5 @@ export async function readDocumentFile(id: Types.ObjectId | string): Promise<Buf
   if (!file) return null;
   const chunks: Buffer[] = [];
   for await (const chunk of b.openDownloadStream(_id)) chunks.push(chunk as Buffer);
-  return Buffer.concat(chunks);
+  return openFromStorage(Buffer.concat(chunks));
 }

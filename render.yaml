@@ -27,3 +27,5 @@ services:
         value: Asia/Kolkata
       - key: APP_URL
         sync: false # your public URL, e.g. https://rentee.onrender.com (receipt/pay links and the Claude MCP connector's OAuth URLs)
+      - key: FILES_ENCRYPTION_KEY
+        sync: false # 32+ random chars; same value as your local .env. Back it up — lost key = unreadable documents
