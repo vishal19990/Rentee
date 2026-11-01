@@ -50,3 +50,18 @@ export async function readForm(req: Request): Promise<URLSearchParams | null> {
     return null;
   }
 }
+
+/** The client's address for per-IP limits (last X-Forwarded-For entry = the one Render's proxy adds). */
+export function requestIp(req: Request): string {
+  const last = req.headers.get("x-forwarded-for")?.split(",").map((s) => s.trim()).filter(Boolean).pop();
+  return last || req.headers.get("x-real-ip")?.trim() || "unknown";
+}
+
+/** 429 with Retry-After; MCP and OAuth clients back off and retry. */
+export function tooManyRequests(retryAfterSec: number): Response {
+  return json(
+    { error: "rate_limited", error_description: `Too many requests. Retry in ${retryAfterSec} seconds.` },
+    429,
+    { "Retry-After": String(retryAfterSec) },
+  );
+}

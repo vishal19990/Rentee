@@ -95,6 +95,11 @@ async function signIn(next) {
   fd.set("password", ADMIN.password);
   const res = await fetch(`${BASE}/login`, { method: "POST", body: fd, redirect: "manual" });
   const cookie = setCookies(res);
+  if (res.status !== 303) {
+    const body = await res.text().catch(() => "");
+    const alert = body.match(/role="alert"[^>]*>(?:<[^>]+>)*([^<]{3,200})/)?.[1];
+    console.log(`  (login returned ${res.status}${alert ? `: ${alert}` : ""})`);
+  }
   return { status: res.status, location: res.headers.get("location"), cookie };
 }
 
@@ -251,6 +256,14 @@ async function main() {
     APP_URL: BASE,
     NEXT_DIST_DIR: distDir,
     NEXT_TELEMETRY_DISABLED: "1",
+    // Explicit values win over the developer's .env (which Next/seed also load): no robot check
+    // for the scripted login, and a throwaway file-encryption key.
+    ADMIN_EMAIL: ADMIN.email,
+    ADMIN_PASSWORD: ADMIN.password,
+    ADMIN_NAME: "E2E Admin",
+    TURNSTILE_SITE_KEY: " ", // a space (not "") so Next.js does not refill it from .env; trimmed = off
+    TURNSTILE_SECRET_KEY: " ",
+    FILES_ENCRYPTION_KEY: b64url(randomBytes(32)),
   };
   let app;
   try {
@@ -478,6 +491,23 @@ async function main() {
     check("revoked grant -> 401 on /api/mcp", (await rpc(access, "tools/list")).status === 401);
     const optionsRes = await fetch(MCP, { method: "OPTIONS" });
     check("CORS preflight on /api/mcp", optionsRes.status === 204 && optionsRes.headers.get("access-control-allow-origin") === "*");
+
+    console.log("\n== Request limits");
+    // Earlier steps already sent some unauthenticated requests this minute; flood until refused.
+    let firstLimited = null;
+    for (let i = 1; i <= 40 && !firstLimited; i++) {
+      const r = await fetch(MCP, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+      if (r.status === 429) firstLimited = { i, retry: r.headers.get("retry-after"), body: await r.json().catch(() => ({})) };
+    }
+    check("flood without a token -> 429 within 40 requests", !!firstLimited, firstLimited ? `after ${firstLimited.i}` : "never limited");
+    check("429 carries Retry-After (1–60 s)", !!firstLimited && Number(firstLimited.retry) >= 1 && Number(firstLimited.retry) <= 60, firstLimited?.retry);
+    check("429 body is rate_limited", firstLimited?.body?.error === "rate_limited");
+    let tokenLimited = null;
+    for (let i = 1; i <= 40 && !tokenLimited; i++) {
+      const r = await form(`${BASE}/api/oauth/token`, { grant_type: "refresh_token", refresh_token: "bogus", client_id: "bogus" });
+      if (r.status === 429) tokenLimited = i;
+    }
+    check("token endpoint flood -> 429 within 40 requests", !!tokenLimited, tokenLimited ? `after ${tokenLimited}` : "never limited");
   } finally {
     if (app) {
       app.kill();

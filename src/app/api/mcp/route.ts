@@ -1,7 +1,9 @@
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { buildMcpServer } from "@/lib/mcp/server";
 import { bearerToken, oauthUrls, wwwAuthenticate } from "@/lib/oauth/core";
-import { CORS_HEADERS, json, preflight, requestBase } from "@/lib/oauth/http";
+import { CORS_HEADERS, json, preflight, requestBase, requestIp, tooManyRequests } from "@/lib/oauth/http";
+import { hitRateLimit } from "@/lib/rate-limit";
+import { LIMITS } from "@/lib/rate-limit-core";
 import { verifyAccessToken } from "@/lib/oauth/store";
 
 export const dynamic = "force-dynamic";
@@ -24,16 +26,23 @@ export async function POST(req: Request) {
   const base = requestBase(req);
   const header = req.headers.get("authorization");
   const token = bearerToken(header);
-  if (!token) return unauthorized(base, !!header);
-  const ctx = await verifyAccessToken(token, oauthUrls(base).resource);
-  if (!ctx) return unauthorized(base, true);
+  const ctx = token ? await verifyAccessToken(token, oauthUrls(base).resource) : null;
+  if (!ctx) {
+    // Missing or bad tokens: limited per address, so probing can't hammer the server.
+    const rl = await hitRateLimit("mcp-unauth", requestIp(req), LIMITS.mcpUnauthenticatedPerIp);
+    if (!rl.allowed) return tooManyRequests(rl.retryAfterSec);
+    return unauthorized(base, !!header);
+  }
+  // Valid connection: limited per grant (all tokens of one Claude connection share it).
+  const rl = await hitRateLimit("mcp-grant", ctx.family, LIMITS.mcpPerGrant);
+  if (!rl.allowed) return tooManyRequests(rl.retryAfterSec);
 
   const server = buildMcpServer({ ...ctx, base });
   const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   try {
     await server.connect(transport);
     const res = await transport.handleRequest(req, {
-      authInfo: { token, clientId: ctx.clientId, scopes: ctx.scopes, extra: { userId: ctx.userId } },
+      authInfo: { token: token as string, clientId: ctx.clientId, scopes: ctx.scopes, extra: { userId: ctx.userId } },
     });
     const headers = new Headers(res.headers);
     for (const [k, v] of Object.entries(CORS_HEADERS)) headers.set(k, v);

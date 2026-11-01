@@ -1,11 +1,15 @@
 import { clientFromRequest } from "@/lib/oauth/client-auth";
-import { json, oauthError, preflight, readForm } from "@/lib/oauth/http";
+import { json, oauthError, preflight, readForm, requestIp, tooManyRequests } from "@/lib/oauth/http";
+import { hitRateLimit } from "@/lib/rate-limit";
+import { LIMITS } from "@/lib/rate-limit-core";
 import { exchangeCode, refreshTokens } from "@/lib/oauth/store";
 
 export const dynamic = "force-dynamic";
 
 /** OAuth 2.1 token endpoint: authorization_code (+PKCE) and refresh_token (rotating). */
 export async function POST(req: Request) {
+  const rl = await hitRateLimit("oauth-token", requestIp(req), LIMITS.oauthTokenPerIp);
+  if (!rl.allowed) return tooManyRequests(rl.retryAfterSec);
   const form = await readForm(req);
   if (!form) return oauthError("invalid_request", "Malformed request body");
   const grantType = form.get("grant_type");
