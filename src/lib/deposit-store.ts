@@ -74,7 +74,18 @@ export async function ensureDepositLedger(rentalId: string | Types.ObjectId): Pr
   if (initialised) {
     // A deposit entered later (rental edited from 0 to an amount): only the call that created
     // the initial entry moves the guard.
-    if (created) await Rental.updateOne({ _id: rental._id }, { $inc: { depositHeld: initialAmount } });
+    if (created) {
+      const inc = typeof rental.depositReceived === "number" ? { depositHeld: initialAmount, depositReceived: initialAmount } : { depositHeld: initialAmount };
+      await Rental.updateOne({ _id: rental._id }, { $inc: inc });
+    }
+    // Older rentals initialised before every rental cached its total received: backfill once.
+    if (typeof rental.depositReceived !== "number") {
+      const all = await DepositEntry.find({ rental: rental._id }).select("kind amount").lean();
+      await Rental.updateOne(
+        { _id: rental._id, depositReceived: { $exists: false } },
+        { $set: { depositReceived: depositSummary(all).received } },
+      );
+    }
     return;
   }
   // Until depositHeld exists no other entry can be added (addDepositEntry requires it),
@@ -82,10 +93,10 @@ export async function ensureDepositLedger(rentalId: string | Types.ObjectId): Pr
   const entries = await DepositEntry.find({ rental: rental._id }).select("kind amount").lean();
   const summary = depositSummary(entries);
   const held = Math.max(summary.held, 0);
-  // Advance-flow rentals also cache the total received (the guard for payments), set together.
+  // Also cache the total received (the guard for payments), set together.
   await Rental.updateOne(
     { _id: rental._id, depositHeld: { $exists: false } },
-    { $set: adv ? { depositHeld: held, depositReceived: summary.received } : { depositHeld: held } },
+    { $set: { depositHeld: held, depositReceived: summary.received } },
   );
 }
 
@@ -162,7 +173,8 @@ export async function addDepositEntry(
   await ensureDepositLedger(rentalId);
   const out = entry.kind !== "received";
   // Advance-flow rentals: money in can't take the total received past the agreed deposit.
-  const capped = !out && !!(await Rental.exists({ _id: rentalId, depositAdvance: { $ne: null } }));
+  // Money in can't take the total received past the deposit quoted (every rental).
+  const capped = !out;
   const inc = capped
     ? { depositHeld: entry.amount, depositReceived: entry.amount }
     : { depositHeld: out ? -entry.amount : entry.amount };
@@ -246,9 +258,7 @@ export async function changeDepositEntry(
   await Rental.updateOne(
     { _id: rentalId },
     {
-      $set: rental.depositAdvance
-        ? { depositHeld: Math.max(summary.held, 0), depositReceived: summary.received }
-        : { depositHeld: Math.max(summary.held, 0) },
+      $set: { depositHeld: Math.max(summary.held, 0), depositReceived: summary.received },
     },
   );
   return null;
@@ -260,8 +270,7 @@ export async function changeDepositEntry(
  * filters on the cached depositReceived, so a payment racing the edit can't slip past.)
  */
 export async function agreedDepositGuard(rentalId: Types.ObjectId, agreed: number): Promise<string | null> {
-  const rental = await Rental.findById(rentalId).select("depositAdvance").lean();
-  if (!rental?.depositAdvance) return null;
+  if (!(await Rental.exists({ _id: rentalId }))) return null;
   const { summary } = await loadDeposit(rentalId);
   return agreedDepositError(agreed, summary.received);
 }

@@ -87,7 +87,7 @@ export async function loadRentals(filter: Record<string, unknown> = {}, today = 
   if (rentals.length === 0) return [];
 
   const rentalIds = rentals.map((r) => r._id);
-  const advanceIds = rentals.filter((r) => r.depositAdvance).map((r) => r._id);
+  const advanceIds = rentalIds; // every rental: the deposit balance is quoted − received
   const [properties, tenants, payments, changes, charges, depositIn, wifiByRental] = await Promise.all([
     Property.find({ _id: { $in: rentals.map((r) => r.property) } }).select("name").lean(),
     Tenant.find({ _id: { $in: rentals.map((r) => r.tenant) } }).select("name phone photo").lean(),
@@ -155,7 +155,7 @@ export async function loadRentals(filter: Record<string, unknown> = {}, today = 
       movingOut: status === "active" && !!r.moveOutDate,
       schedule,
       summary: summarize(schedule),
-      depositBalance: r.depositAdvance ? Math.max(r.deposit - (depositReceived.get(toId(r._id)) ?? 0), 0) : 0,
+      depositBalance: Math.max(r.deposit - (depositReceived.get(toId(r._id)) ?? 0), 0),
     };
   });
 }

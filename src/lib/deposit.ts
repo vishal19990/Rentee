@@ -42,9 +42,9 @@ export function depositEntryError(held: number, kind: DepositKind, amount: numbe
 /**
  * Rentals created with an advance (`Rental.depositAdvance` set) record the deposit as it is
  * paid: received entries dated on or before move-in are the **Advance**, later ones are
- * **Part payments** ("Paid later"). Balance = agreed − total received (never negative).
- * Rentals without it (created before this) were recorded as fully paid at move-in, so their
- * balance is always 0.
+ * **Part payments** ("Paid later"). Balance = agreed − total received (never negative), for
+ * every rental: older rentals (created before this) start with the whole deposit received at
+ * move-in, so their balance is 0 unless the ledger was edited.
  */
 export const DEPOSIT_METHODS = ["cash", "upi", "bank_transfer", "cheque", "other"] as const;
 export type DepositMethod = (typeof DEPOSIT_METHODS)[number];
@@ -88,7 +88,7 @@ export function depositStatus(
     if (e.date <= rental.moveInDate) advance += e.amount;
     else paidLater += e.amount;
   }
-  const balance = rental.advanceFlow ? Math.max(rental.deposit - summary.received, 0) : 0;
+  const balance = Math.max(rental.deposit - summary.received, 0);
   return { ...summary, agreed: rental.deposit, advance, paidLater, balance };
 }
 
@@ -112,7 +112,7 @@ export function depositLedgerError(
   if (s.held < 0) {
     return `Deductions and refunds (${formatMoneyShort(s.deducted + s.refunded)}) would be more than the deposit received (${formatMoneyShort(s.received)})`;
   }
-  if (rental.advanceFlow && s.received > rental.deposit) {
+  if (s.received > rental.deposit) {
     return `Total received (${formatMoneyShort(s.received)}) can't be more than the deposit quoted (${formatMoneyShort(rental.deposit)})`;
   }
   return null;

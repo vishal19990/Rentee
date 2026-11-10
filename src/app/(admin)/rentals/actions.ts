@@ -157,7 +157,7 @@ export async function updateRental(id: string, _prev: ActionState, fd: FormData)
 
   try {
     const res = await Rental.updateOne(
-      { _id, $or: [{ depositAdvance: null }, { depositReceived: { $exists: false } }, { depositReceived: { $lte: terms.deposit } }] },
+      { _id, $or: [{ depositReceived: { $exists: false } }, { depositReceived: { $lte: terms.deposit } }] },
       {
         moveInDate: dateFromISO(moveInDate),
         moveOutDate: moveOutDate ? dateFromISO(moveOutDate) : null,

@@ -200,6 +200,6 @@ export async function loadDepositReceipt(entryId: string, view: "admin" | "publi
     label: depositPaymentLabel(date, toISODate(rental.moveInDate)),
     agreed: rental.deposit,
     totalReceived,
-    balance: advanceFlow ? Math.max(rental.deposit - totalReceived, 0) : 0,
+    balance: Math.max(rental.deposit - totalReceived, 0),
   };
 }

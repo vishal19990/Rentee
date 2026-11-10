@@ -111,12 +111,17 @@ describe("deposit advance and part payments", () => {
     if (!noMethod.success) expect(fieldErrorsOf(noMethod.error).method).toBeDefined();
   });
 
-  it("legacy rental: full deposit received at move-in, balance always 0 (no badge)", () => {
+  it("legacy rental: full deposit received at move-in → balance 0 (no badge)", () => {
     const legacy = { deposit: R(20000), moveInDate: "2026-06-01", advanceFlow: false };
     const entries = [received("2026-06-01", R(20000))];
     expect(depositStatus(legacy, entries)).toMatchObject({ received: R(20000), held: R(20000), advance: R(20000), balance: 0 });
-    // Even if the agreed amount was raised later, a legacy rental never shows a balance.
-    expect(depositStatus({ ...legacy, deposit: R(30000) }, entries).balance).toBe(0);
+  });
+
+  it("legacy rental whose entry was edited down shows the real balance (quoted 10,000, received 5,000 → 5,000)", () => {
+    const legacy = { deposit: R(10000), moveInDate: "2026-11-10", advanceFlow: false };
+    expect(depositStatus(legacy, [received("2026-11-10", R(5000))])).toMatchObject({ advance: R(5000), balance: R(5000) });
+    // Raising the quoted deposit later also shows what's still due.
+    expect(depositStatus({ ...legacy, deposit: R(30000) }, [received("2026-11-10", R(20000))]).balance).toBe(R(10000));
   });
 
   it("agreed lowered below what was received is refused", () => {
@@ -215,8 +220,11 @@ describe("editing and deleting deposit entries", () => {
     );
   });
 
-  it("older rentals are not capped at the deposit quoted", () => {
-    expect(depositLedgerError([received("2026-01-01", R(45000))], legacyRental)).toBeNull();
+  it("older rentals are capped at the deposit quoted too", () => {
+    expect(depositLedgerError([received("2026-01-01", R(40000))], legacyRental)).toBeNull();
+    expect(depositLedgerError([received("2026-01-01", R(45000))], legacyRental)).toBe(
+      "Total received (₹45,000) can't be more than the deposit quoted (₹40,000)",
+    );
   });
 
   it("refuses deleting a payment that deductions or refunds already used", () => {
