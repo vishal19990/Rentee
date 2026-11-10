@@ -9,7 +9,7 @@ import { formatDate } from "./format";
 import { CURRENCY, formatMoney } from "./money";
 import { embedAppFonts, type AppFonts } from "./pdf-fonts";
 import { isDepositReceipt, type DepositReceiptData, type ReceiptData } from "./receipts";
-import { formatMonth } from "./rent";
+import { formatCycle } from "./rent";
 
 const INK = rgb(0.06, 0.09, 0.16);
 const MUTED = rgb(0.39, 0.45, 0.55);
@@ -83,7 +83,7 @@ export async function renderReceiptPdf(data: ReceiptData | DepositReceiptData): 
   const statement =
     `Received with thanks from ${r.tenantName} the sum of ${formatMoney(r.amount)} towards rent` +
     `${chargesPhrase(r.breakdown.chargeItems)} for ${r.propertyName}` +
-    `${r.propertyAddress ? `, ${r.propertyAddress}` : ""}, for the month of ${formatMonth(r.breakdown.month)}.`;
+    `${r.propertyAddress ? `, ${r.propertyAddress}` : ""}, for the period ${formatCycle(r.breakdown)}.`;
   for (const line of wrap(fonts, statement, 11, contentWidth)) {
     text(line, left, y, { size: 11 });
     y -= 16;
@@ -94,7 +94,7 @@ export async function renderReceiptPdf(data: ReceiptData | DepositReceiptData): 
   const details: [string, string][] = [
     ["Tenant", r.tenantName],
     ["Property", r.propertyName],
-    ["For month", formatMonth(r.breakdown.month)],
+    ["For period", formatCycle(r.breakdown)],
     ["Paid on", formatDate(r.paidOn)],
     ["Payment method", r.method],
   ];
@@ -108,7 +108,7 @@ export async function renderReceiptPdf(data: ReceiptData | DepositReceiptData): 
   y -= 10;
 
   // Breakdown table
-  text(`Breakdown for ${formatMonth(r.breakdown.month)}`, left, y, { bold: true, size: 11 });
+  text(`Breakdown for ${formatCycle(r.breakdown)}`, left, y, { bold: true, size: 11 });
   y -= 8;
   rule(y);
   y -= 16;
@@ -120,9 +120,9 @@ export async function renderReceiptPdf(data: ReceiptData | DepositReceiptData): 
   row("Rent", formatMoney(r.breakdown.rent));
   for (const c of r.breakdown.chargeItems) row(chargeLabel(c.type), formatMoney(c.amount));
   rule(y + 10);
-  row("Total due for the month", formatMoney(r.breakdown.monthDue), { bold: true });
-  row("Paid towards the month (including this receipt)", formatMoney(r.breakdown.paidToDate));
-  row("Balance for the month", formatMoney(r.breakdown.balanceAfter), { color: r.breakdown.balanceAfter > 0 ? ROSE : INK });
+  row("Total due for the period", formatMoney(r.breakdown.monthDue), { bold: true });
+  row("Paid towards the period (including this receipt)", formatMoney(r.breakdown.paidToDate));
+  row("Balance for the period", formatMoney(r.breakdown.balanceAfter), { color: r.breakdown.balanceAfter > 0 ? ROSE : INK });
   y -= 6;
 
   // Amount box

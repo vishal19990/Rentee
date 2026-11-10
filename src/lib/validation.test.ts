@@ -28,7 +28,6 @@ describe("rentalSchema", () => {
     moveInDate: "2026-01-01",
     monthlyRent: "25000",
     deposit: "",
-    dueDay: "5",
   };
 
   it("accepts a month-to-month rental with no move-out date and converts money", () => {
@@ -37,14 +36,16 @@ describe("rentalSchema", () => {
     if (r.success) {
       expect(r.data.monthlyRent).toBe(2500000);
       expect(r.data.deposit).toBe(0);
-      expect(r.data.dueDay).toBe(5);
       expect("moveOutDate" in r.data).toBe(false);
+      // Rent is billed in cycles from the move-in day: there is no due-day field any more.
+      expect("dueDay" in r.data).toBe(false);
     }
   });
 
-  it("rejects due day outside 1–28 and impossible dates", () => {
-    expect(rentalSchema.safeParse({ ...base, dueDay: "29" }).success).toBe(false);
-    expect(rentalSchema.safeParse({ ...base, dueDay: "0" }).success).toBe(false);
+  it("ignores a legacy dueDay field and rejects impossible dates", () => {
+    const legacy = rentalSchema.safeParse({ ...base, dueDay: "29" });
+    expect(legacy.success).toBe(true);
+    if (legacy.success) expect("dueDay" in legacy.data).toBe(false);
     expect(rentalSchema.safeParse({ ...base, moveInDate: "2026-02-30" }).success).toBe(false);
     expect(rentalSchema.safeParse({ ...base, moveInDate: "" }).success).toBe(false);
   });

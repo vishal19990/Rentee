@@ -3,7 +3,7 @@ import { chargeLabel, chargesPhrase } from "@/lib/charges";
 import { formatDate } from "@/lib/format";
 import { CURRENCY, formatMoney } from "@/lib/money";
 import { isDepositReceipt, type DepositReceiptData, type ReceiptData } from "@/lib/receipts";
-import { formatMonth } from "@/lib/rent";
+import { formatCycle } from "@/lib/rent";
 
 /** A rent (or security deposit) receipt, as shown on the admin receipt page and the public /r/ link (F1). */
 export function ReceiptView({ r: data }: { r: ReceiptData | DepositReceiptData }) {
@@ -36,13 +36,13 @@ export function ReceiptView({ r: data }: { r: ReceiptData | DepositReceiptData }
           Received with thanks from <strong className="text-slate-900">{r.tenantName}</strong> the sum of{" "}
           <strong className="text-slate-900">{formatMoney(r.amount)}</strong> towards rent{chargesPhrase(b.chargeItems)} for{" "}
           <strong className="text-slate-900">{r.propertyName}</strong>
-          {r.propertyAddress && `, ${r.propertyAddress}`}, for the month of {formatMonth(b.month)}.
+          {r.propertyAddress && `, ${r.propertyAddress}`}, for the period {formatCycle(b)}.
         </p>
 
         <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
           <div>
-            <dt className="text-xs text-slate-500">For month</dt>
-            <dd className="font-medium text-slate-900">{formatMonth(b.month)}</dd>
+            <dt className="text-xs text-slate-500">For period</dt>
+            <dd className="font-medium text-slate-900">{formatCycle(b)}</dd>
           </div>
           <div>
             <dt className="text-xs text-slate-500">Paid on</dt>
@@ -65,7 +65,7 @@ export function ReceiptView({ r: data }: { r: ReceiptData | DepositReceiptData }
         </dl>
 
         <div>
-          <p className="text-xs font-medium tracking-wide text-slate-500 uppercase">Breakdown for {formatMonth(b.month)}</p>
+          <p className="text-xs font-medium tracking-wide text-slate-500 uppercase">Breakdown for {formatCycle(b)}</p>
           <table className="mt-2 w-full text-sm">
             <tbody className="divide-y divide-slate-100">
               <tr>
@@ -79,15 +79,15 @@ export function ReceiptView({ r: data }: { r: ReceiptData | DepositReceiptData }
                 </tr>
               ))}
               <tr className="font-semibold text-slate-900">
-                <td className="py-2">Total due for the month</td>
+                <td className="py-2">Total due for the period</td>
                 <td className="py-2 text-right tabular-nums">{formatMoney(b.monthDue)}</td>
               </tr>
               <tr>
-                <td className="py-2 text-slate-600">Paid towards the month (incl. this receipt)</td>
+                <td className="py-2 text-slate-600">Paid towards the period (incl. this receipt)</td>
                 <td className="py-2 text-right tabular-nums">{formatMoney(b.paidToDate)}</td>
               </tr>
               <tr>
-                <td className="py-2 text-slate-600">Balance for the month</td>
+                <td className="py-2 text-slate-600">Balance for the period</td>
                 <td className={b.balanceAfter > 0 ? "py-2 text-right font-medium text-rose-600 tabular-nums" : "py-2 text-right tabular-nums"}>
                   {b.balanceAfter > 0 ? formatMoney(b.balanceAfter) : "Nil"}
                 </td>

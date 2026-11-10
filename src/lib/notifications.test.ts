@@ -13,11 +13,13 @@ import {
 } from "./notifications";
 
 function rental(
-  over: Partial<{ id: string; moveInDate: string; moveOutDate: string | null; dueDay: number; monthlyRent: number }> = {},
+  over: Partial<{ id: string; moveInDate: string; moveOutDate: string | null; monthlyRent: number }> = {},
   payments: PaymentLike[] = [],
   today: string,
 ): RentalInput {
-  const r = { id: "r1", moveInDate: "2026-09-01", moveOutDate: null as string | null, dueDay: 5, monthlyRent: 2000000, ...over };
+  // Moved in 5 Aug: cycles run 5th → 4th and are due on the 5th of the next month
+  // (cycle 2026-08 = 5 Aug – 4 Sep, due 5 Sep; cycle 2026-09 = 5 Sep – 4 Oct, due 5 Oct).
+  const r = { id: "r1", moveInDate: "2026-08-05", moveOutDate: null as string | null, monthlyRent: 2000000, ...over };
   return {
     id: r.id,
     propertyId: "p1",
@@ -25,9 +27,9 @@ function rental(
     tenantId: "t1",
     tenantName: "Asha Menon",
     status: rentalStatus(r, today),
+    moveInDate: r.moveInDate,
     moveOutDate: r.moveOutDate,
     monthlyRent: r.monthlyRent,
-    dueDay: r.dueDay,
     schedule: rentSchedule(r, payments, today),
   };
 }
@@ -66,13 +68,14 @@ class Store {
 }
 
 describe("rent_overdue (I/O matrix: overdue notification)", () => {
-  it("dueDay 5, today the 6th, October unpaid -> one rent_overdue for rental+Oct; repeated syncs add nothing", () => {
+  it("cycle 5 Sep – 4 Oct due 5 Oct, today the 6th, unpaid -> one rent_overdue for rental+cycle; repeated syncs add nothing", () => {
     const today = "2026-10-06";
-    const r = rental({}, [{ forMonth: "2026-09", amount: 2000000 }], today);
+    const r = rental({}, [{ forMonth: "2026-08", amount: 2000000 }], today);
     const desired = generate([r], [], today);
     const overdue = desired.filter((n) => n.type === "rent_overdue");
     expect(overdue).toHaveLength(1);
-    expect(overdue[0]).toMatchObject({ key: "rent_overdue:r1:2026-10", period: "2026-10", category: "alert", link: "/rentals/r1" });
+    expect(overdue[0]).toMatchObject({ key: "rent_overdue:r1:2026-09", period: "2026-09", category: "alert", link: "/rentals/r1" });
+    expect(overdue[0].body).toBe("Asha Menon owes ₹20,000.00 for 5 Sept – 4 Oct 2026 (due 5 Oct 2026).");
 
     const store = new Store();
     store.sync(desired);
@@ -84,46 +87,50 @@ describe("rent_overdue (I/O matrix: overdue notification)", () => {
   });
 
   it("is not overdue on the due day itself", () => {
-    const r = rental({}, [{ forMonth: "2026-09", amount: 2000000 }], "2026-10-05");
+    const r = rental({}, [{ forMonth: "2026-08", amount: 2000000 }], "2026-10-05");
     expect(generate([r], [], "2026-10-05").filter((n) => n.type === "rent_overdue")).toHaveLength(0);
   });
 });
 
 describe("rent_due_soon (I/O matrix: due-soon notification)", () => {
-  it("due in 3 days, unpaid, threshold 3 -> one rent_due_soon for rental+month", () => {
-    const today = "2026-10-02"; // Oct due on the 5th
-    const r = rental({}, [{ forMonth: "2026-09", amount: 2000000 }], today);
+  it("due in 3 days (cycle end), unpaid, threshold 3 -> one rent_due_soon for rental+cycle", () => {
+    const today = "2026-10-02"; // cycle 5 Sep – 4 Oct is due on 5 Oct
+    const r = rental({}, [{ forMonth: "2026-08", amount: 2000000 }], today);
     const soon = generate([r], [], today).filter((n) => n.type === "rent_due_soon");
     expect(soon).toHaveLength(1);
-    expect(soon[0]).toMatchObject({ key: "rent_due_soon:r1:2026-10", category: "reminder" });
+    expect(soon[0]).toMatchObject({ key: "rent_due_soon:r1:2026-09", category: "reminder" });
     expect(soon[0].title).toContain("in 3 days");
+    expect(soon[0].body).toBe("₹20,000.00 from Asha Menon for 5 Sept – 4 Oct 2026 is due on 5 Oct 2026.");
   });
 
   it("not yet when the due date is further away than the threshold", () => {
-    const r = rental({}, [{ forMonth: "2026-09", amount: 2000000 }], "2026-10-01");
+    const r = rental({}, [{ forMonth: "2026-08", amount: 2000000 }], "2026-10-01");
     expect(generate([r], [], "2026-10-01").filter((n) => n.type === "rent_due_soon")).toHaveLength(0);
   });
 
-  it("covers next month's due date before that month has started", () => {
-    const today = "2026-09-29"; // Sept paid; Oct 1 due in 2 days
-    const r = rental({ dueDay: 1 }, [{ forMonth: "2026-09", amount: 2000000 }], today);
+  it("covers the next cycle before it has started (a short final cycle due on the move-out date)", () => {
+    // All cycles through 5 Oct – 4 Nov paid; moving out 7 Nov -> final cycle 5–7 Nov (3 of 30 days) due 7 Nov.
+    const today = "2026-11-04";
+    const paid = ["2026-08", "2026-09", "2026-10"].map((forMonth) => ({ forMonth, amount: 2000000 }));
+    const r = rental({ moveOutDate: "2026-11-07" }, paid, today);
     const soon = generate([r], [], today).filter((n) => n.type === "rent_due_soon");
-    expect(soon.map((n) => n.key)).toEqual(["rent_due_soon:r1:2026-10"]);
+    expect(soon.map((n) => n.key)).toEqual(["rent_due_soon:r1:2026-11"]);
+    expect(soon[0].body).toBe("₹2,000.00 from Asha Menon for 5 Nov – 7 Nov 2026 is due on 7 Nov 2026.");
   });
 
-  it("is resolved when the month becomes overdue (replaced by rent_overdue)", () => {
+  it("is resolved when the cycle becomes overdue (replaced by rent_overdue)", () => {
     const store = new Store();
-    const paidSept = [{ forMonth: "2026-09", amount: 2000000 }];
-    store.sync(generate([rental({}, paidSept, "2026-10-03")], [], "2026-10-03"));
-    const plan = store.sync(generate([rental({}, paidSept, "2026-10-06")], [], "2026-10-06"));
-    expect(plan.resolveKeys).toEqual(["rent_due_soon:r1:2026-10"]);
-    expect(plan.create.map((c) => c.key)).toEqual(["rent_overdue:r1:2026-10"]);
+    const paidAug = [{ forMonth: "2026-08", amount: 2000000 }];
+    store.sync(generate([rental({}, paidAug, "2026-10-03")], [], "2026-10-03"));
+    const plan = store.sync(generate([rental({}, paidAug, "2026-10-06")], [], "2026-10-06"));
+    expect(plan.resolveKeys).toEqual(["rent_due_soon:r1:2026-09"]);
+    expect(plan.create.map((c) => c.key)).toEqual(["rent_overdue:r1:2026-09"]);
   });
 
-  it("is not generated for a paid month or a moved-out rental", () => {
-    const paid = rental({}, [{ forMonth: "2026-09", amount: 2000000 }, { forMonth: "2026-10", amount: 2000000 }], "2026-10-02");
+  it("is not generated for a paid cycle or a moved-out rental", () => {
+    const paid = rental({}, [{ forMonth: "2026-08", amount: 2000000 }, { forMonth: "2026-09", amount: 2000000 }], "2026-10-02");
     expect(generate([paid], [], "2026-10-02").filter((n) => n.type === "rent_due_soon")).toHaveLength(0);
-    const gone = rental({ moveOutDate: "2026-09-30" }, [{ forMonth: "2026-09", amount: 2000000 }], "2026-10-02");
+    const gone = rental({ moveOutDate: "2026-09-30" }, [{ forMonth: "2026-08", amount: 2000000 }, { forMonth: "2026-09", amount: 2000000 }], "2026-10-02");
     expect(generate([gone], [], "2026-10-02")).toHaveLength(0);
   });
 });
@@ -132,12 +139,12 @@ describe("resolved by payment (I/O matrix)", () => {
   it("full payment resolves the overdue notification and the unread count decreases", () => {
     const today = "2026-10-06";
     const store = new Store();
-    store.sync(generate([rental({}, [{ forMonth: "2026-09", amount: 2000000 }], today)], [], today));
+    store.sync(generate([rental({}, [{ forMonth: "2026-08", amount: 2000000 }], today)], [], today));
     expect(store.unread()).toBe(1);
 
-    const afterPayment = rental({}, [{ forMonth: "2026-09", amount: 2000000 }, { forMonth: "2026-10", amount: 2000000 }], today);
+    const afterPayment = rental({}, [{ forMonth: "2026-08", amount: 2000000 }, { forMonth: "2026-09", amount: 2000000 }], today);
     const plan = store.sync(generate([afterPayment], [], today));
-    expect(plan.resolveKeys).toEqual(["rent_overdue:r1:2026-10"]);
+    expect(plan.resolveKeys).toEqual(["rent_overdue:r1:2026-09"]);
     expect(store.items[0].resolvedAt).not.toBeNull();
     expect(store.unread()).toBe(0);
   });
@@ -145,8 +152,8 @@ describe("resolved by payment (I/O matrix)", () => {
   it("a partial payment keeps it open and updates the amount", () => {
     const today = "2026-10-06";
     const store = new Store();
-    store.sync(generate([rental({}, [{ forMonth: "2026-09", amount: 2000000 }], today)], [], today));
-    const partial = rental({}, [{ forMonth: "2026-09", amount: 2000000 }, { forMonth: "2026-10", amount: 500000 }], today);
+    store.sync(generate([rental({}, [{ forMonth: "2026-08", amount: 2000000 }], today)], [], today));
+    const partial = rental({}, [{ forMonth: "2026-08", amount: 2000000 }, { forMonth: "2026-09", amount: 500000 }], today);
     const plan = store.sync(generate([partial], [], today));
     expect(plan.resolveKeys).toEqual([]);
     expect(plan.update).toHaveLength(1);
@@ -157,7 +164,7 @@ describe("resolved by payment (I/O matrix)", () => {
   it("read notifications don't count as unread", () => {
     const store = new Store();
     store.sync(generate([rental({}, [], "2026-10-06")], [], "2026-10-06"));
-    expect(store.unread()).toBe(2); // Sept + Oct overdue
+    expect(store.unread()).toBe(2); // cycles due 5 Sep and 5 Oct overdue
     store.items[0].readAt = new Date();
     expect(store.unread()).toBe(1);
   });
@@ -166,7 +173,7 @@ describe("resolved by payment (I/O matrix)", () => {
 describe("move_out_soon (I/O matrix: moving out)", () => {
   it("active rental, move-out in 5 days, threshold 7 -> one move_out_soon", () => {
     const today = "2026-10-06";
-    const r = rental({ moveOutDate: "2026-10-11" }, [{ forMonth: "2026-09", amount: 2000000 }, { forMonth: "2026-10", amount: 2000000 }], today);
+    const r = rental({ moveOutDate: "2026-10-11" }, [{ forMonth: "2026-08", amount: 2000000 }, { forMonth: "2026-09", amount: 2000000 }], today);
     const n = generate([r], [], today).filter((x) => x.type === "move_out_soon");
     expect(n).toHaveLength(1);
     expect(n[0]).toMatchObject({ key: "move_out_soon:r1:2026-10-11", category: "reminder" });
@@ -174,7 +181,7 @@ describe("move_out_soon (I/O matrix: moving out)", () => {
   });
 
   it("not when further out than the threshold; resolved once the tenant has moved out", () => {
-    const paid = [{ forMonth: "2026-09", amount: 2000000 }, { forMonth: "2026-10", amount: 2000000 }];
+    const paid = [{ forMonth: "2026-08", amount: 2000000 }, { forMonth: "2026-09", amount: 2000000 }];
     expect(generate([rental({ moveOutDate: "2026-10-20" }, paid, "2026-10-06")], [], "2026-10-06")).toHaveLength(0);
     const store = new Store();
     store.sync(generate([rental({ moveOutDate: "2026-10-11" }, paid, "2026-10-06")], [], "2026-10-06"));

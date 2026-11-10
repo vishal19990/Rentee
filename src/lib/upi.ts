@@ -4,7 +4,7 @@
  */
 import { z } from "zod";
 import { CURRENCY, minorDigits } from "./money";
-import { addMonths, dueForMonth, monthOf, monthRange, type ChargeLike, type RentChangeLike, type RentMonth, type WifiPlanLike } from "./rent";
+import { addMonths, cycleBill, monthOf, monthRange, type ChargeLike, type RentChangeLike, type RentMonth, type WifiPlanLike } from "./rent";
 
 /** UPI VPA, e.g. "landlord@okhdfcbank". */
 export const VPA_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]{1,255}@[a-zA-Z][a-zA-Z0-9.-]{1,63}$/;
@@ -34,13 +34,13 @@ export function upiUri(p: { vpa: string; payeeName: string; amount: number; note
   return `upi://pay?${q.join("&")}`;
 }
 
-export type PayDue = { months: { month: string; balance: number }[]; amount: number };
+export type PayDue = { months: { month: string; start: string; end: string; balance: number }[]; amount: number };
 
 /**
- * What a pay link asks for, computed live: every unpaid balance in the rent schedule up to the
- * current month (or up to `through`, the last month the link was made for), plus months up to
- * `through` that haven't started yet (e.g. next month's rent from a "due soon" reminder).
- * Fully paid -> amount 0.
+ * What a pay link asks for, computed live: every unpaid billing cycle whose due date has arrived
+ * (rent is paid at the end of a cycle), plus unpaid cycles up to `through` (the last cycle key the
+ * link was made for), including ones not yet listed (e.g. the next cycle from a "due soon"
+ * reminder). Fully paid -> amount 0.
  */
 export function payDue(
   rental: {
@@ -55,21 +55,20 @@ export function payDue(
   through: string | null,
   today: string,
 ): PayDue {
-  const current = monthOf(today);
-  const last = through && through > current ? through : current;
-  const months: { month: string; balance: number }[] = [];
+  const months: PayDue["months"] = [];
   const listed = new Set<string>();
   for (const m of rental.schedule) {
     listed.add(m.month);
-    if (m.month <= last && m.balance > 0) months.push({ month: m.month, balance: m.balance });
+    const covered = m.dueDate <= today || (through !== null && m.month <= through);
+    if (covered && m.balance > 0) months.push({ month: m.month, start: m.start, end: m.end, balance: m.balance });
   }
-  if (last > current) {
-    const first = monthOf(rental.moveInDate);
-    const moveOut = rental.moveOutDate ? monthOf(rental.moveOutDate) : null;
-    for (const m of monthRange(addMonths(current, 1), last)) {
-      if (listed.has(m) || m < first || (moveOut && m > moveOut)) continue;
-      const due = dueForMonth(rental, m);
-      if (due > 0) months.push({ month: m, balance: due });
+  const lastListed = rental.schedule.length ? rental.schedule[rental.schedule.length - 1].month : null;
+  if (through && (!lastListed || through > lastListed)) {
+    const from = lastListed ? addMonths(lastListed, 1) : monthOf(rental.moveInDate);
+    for (const m of monthRange(from, through)) {
+      if (listed.has(m)) continue;
+      const bill = cycleBill(rental, m);
+      if (bill.cycle && bill.due > 0) months.push({ month: m, start: bill.cycle.start, end: bill.cycle.end, balance: bill.due });
     }
   }
   months.sort((a, b) => (a.month < b.month ? -1 : 1));

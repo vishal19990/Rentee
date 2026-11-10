@@ -14,7 +14,6 @@ export type RentalDefaults = {
   depositAdvanceDate?: string;
   /** Latest allowed advance date (today). */
   advanceMaxDate?: string;
-  dueDay?: number;
 };
 
 export function RentalForm({
@@ -51,7 +50,11 @@ export function RentalForm({
           label="Move-in date"
           type="date"
           defaultValue={defaults.moveInDate}
-          hint={showMoveOut ? undefined : "Rent is charged monthly from this date until the tenant moves out."}
+          hint={
+            showMoveOut
+              ? "Billing cycles run from this day each month; rent for a cycle is due at its end."
+              : "Rent is billed in monthly cycles from this day and paid at the end of each cycle (moved in 20 Oct → pays 20 Nov)."
+          }
         />
         {showMoveOut && (
           <TextField
@@ -99,16 +102,6 @@ export function RentalForm({
             />
           </>
         )}
-        <TextField
-          name="dueDay"
-          label="Rent due day"
-          type="number"
-          inputMode="numeric"
-          min={1}
-          max={28}
-          defaultValue={defaults.dueDay ?? 5}
-          hint="Day of the month rent is due (1–28). Unpaid rent becomes overdue after this day."
-        />
       </div>
       <div className="mt-6 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-5">
         <Link href={cancelHref} className="btn btn-secondary">

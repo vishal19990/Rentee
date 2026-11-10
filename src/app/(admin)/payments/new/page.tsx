@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { requireUser } from "@/lib/auth";
 import { loadRentals } from "@/lib/data";
 import { formatMoney } from "@/lib/money";
-import { localToday, monthOf } from "@/lib/rent";
+import { localToday, paymentPeriodOptions } from "@/lib/rent";
 import { ButtonLink, Card, EmptyState, PageHeader } from "@/components/ui";
 import { IconFile } from "@/components/icons";
 import { createPayment } from "../actions";
@@ -17,7 +17,10 @@ export default async function NewPaymentPage({ searchParams }: { searchParams: P
   // Active rentals, plus moved-out ones that still have an outstanding balance.
   const rentals = (await loadRentals({}, today)).filter((l) => l.status === "active" || l.summary.balance > 0);
   const selected = rentals.find((l) => l.id === rentalId);
-  const nextDue = selected?.schedule.find((m) => m.balance > 0);
+  // "For period": each rental's billing cycles; default = oldest unpaid due cycle, else the current one.
+  const periods = Object.fromEntries(rentals.map((l) => [l.id, paymentPeriodOptions(l, l.schedule, today)]));
+  const defaultMonth = selected ? periods[selected.id].defaultMonth : undefined;
+  const defaultCycle = selected?.schedule.find((m) => m.month === defaultMonth);
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -39,11 +42,12 @@ export default async function NewPaymentPage({ searchParams }: { searchParams: P
               value: l.id,
               label: `${l.propertyName} · ${l.tenantName}${l.summary.overdueAmount > 0 ? ` (overdue ${formatMoney(l.summary.overdueAmount)})` : ""}`,
             }))}
+            periods={periods}
             returnTo="rental"
             defaults={{
               rentalId: selected?.id,
-              forMonth: nextDue?.month ?? monthOf(today),
-              amount: nextDue?.balance ?? selected?.currentRent,
+              forMonth: defaultMonth,
+              amount: defaultCycle?.balance || selected?.currentRent,
               paidOn: today,
             }}
           />

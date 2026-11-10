@@ -3,7 +3,7 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { formatDate, formatStay, titleCase } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
-import { formatMonth, localToday } from "@/lib/rent";
+import { formatCycle, localToday } from "@/lib/rent";
 import { ledgerOptions, loadLedger, tenantName } from "@/lib/reports-data";
 import { Card, EmptyState, PageHeader, StatCard, StatusBadge, Table, TBody, Td, Th, THead } from "@/components/ui";
 import { IconCheck, IconFile, IconReceipt, IconWallet } from "@/components/icons";
@@ -25,7 +25,7 @@ export default async function LedgerPage({ searchParams }: { searchParams: Promi
       <PageHeader
         back={forTenant ? { href: `/tenants/${sp.tenant}`, label: forTenant } : { href: "/reports", label: "Reports" }}
         title="Tenant ledger"
-        description="Every month's rent and charges, what was paid and the running balance, plus payments and the security deposit."
+        description="Every billing cycle's rent and charges, what was paid and the running balance, plus payments and the security deposit."
         actions={
           data && (
             <>
@@ -99,13 +99,13 @@ function Ledger({ data }: { data: NonNullable<Awaited<ReturnType<typeof loadLedg
         <StatCard label="Deposit held" value={formatMoney(ledger.depositHeld)} icon={<IconWallet />} tone="amber" />
       </div>
 
-      <Card title="Month by month" bodyClassName="p-0">
+      <Card title="Billing cycles" bodyClassName="p-0">
         {ledger.months.length === 0 ? (
-          <EmptyState compact icon={<IconFile />} title="No rent months yet" />
+          <EmptyState compact icon={<IconFile />} title="No rent cycles yet" />
         ) : (
           <Table>
             <THead>
-              <Th>Month</Th>
+              <Th>Period</Th>
               <Th className="text-right">Rent</Th>
               <Th className="text-right">Charges</Th>
               <Th className="text-right">Due</Th>
@@ -118,7 +118,7 @@ function Ledger({ data }: { data: NonNullable<Awaited<ReturnType<typeof loadLedg
               {ledger.months.map((m) => (
                 <tr key={m.month}>
                   <Td className="whitespace-nowrap">
-                    {formatMonth(m.month)}
+                    {formatCycle(m)}
                     <span className="block text-xs text-slate-500">due {formatDate(m.dueDate)}</span>
                   </Td>
                   <Td className="text-right tabular-nums">{formatMoney(m.rent)}</Td>
@@ -168,7 +168,7 @@ function Ledger({ data }: { data: NonNullable<Awaited<ReturnType<typeof loadLedg
                 {ledger.payments.map((p, i) => (
                   <tr key={i}>
                     <Td className="whitespace-nowrap">{formatDate(p.paidOn)}</Td>
-                    <Td className="whitespace-nowrap">{formatMonth(p.forMonth)}</Td>
+                    <Td className="whitespace-nowrap">{formatCycle(p)}</Td>
                     <Td className="text-right tabular-nums">{formatMoney(p.amount)}</Td>
                     <Td>{titleCase(p.method)}</Td>
                   </tr>

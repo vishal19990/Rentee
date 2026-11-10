@@ -7,7 +7,7 @@ import { PDFDocument, rgb, type PDFPage } from "pdf-lib";
 import { titleCase } from "./format";
 import { formatMoney } from "./money";
 import { embedAppFonts, type AppFonts } from "./pdf-fonts";
-import { formatMonth } from "./rent";
+import { formatCycle, formatMonth } from "./rent";
 import { MONTH_STATUS_LABELS, type FySummary, type TenantLedger } from "./reports";
 
 export const pdfMoney = (minor: number) => formatMoney(minor);
@@ -183,13 +183,13 @@ export async function ledgerPdf(h: LedgerPdfHeading, ledger: TenantLedger): Prom
     3,
   );
 
-  w.heading("Month by month");
+  w.heading("Billing cycles");
   w.table(
     [
-      { header: "Month", width: 62 },
+      { header: "Period", width: 82 },
       { header: "Due date", width: 62 },
       { header: "Rent", width: 72, align: "right" },
-      { header: "Charges", width: 130 },
+      { header: "Charges", width: 110 },
       { header: "Due", width: 72, align: "right" },
       { header: "Paid", width: 72, align: "right" },
       { header: "Balance", width: 72, align: "right" },
@@ -200,7 +200,7 @@ export async function ledgerPdf(h: LedgerPdfHeading, ledger: TenantLedger): Prom
       ...ledger.months.map((m, i) => ({
         shade: i % 2 === 1,
         cells: [
-          formatMonth(m.month),
+          formatCycle(m, { short: true }),
           m.dueDate,
           pdfMoney(m.rent),
           m.chargeItems.length ? m.chargeItems.map((c) => `${c.label} ${pdfMoney(c.amount)}`).join(", ") : "-",
@@ -220,14 +220,14 @@ export async function ledgerPdf(h: LedgerPdfHeading, ledger: TenantLedger): Prom
   w.table(
     [
       { header: "Paid on", width: 70 },
-      { header: "For month", width: 70 },
+      { header: "For period", width: 120 },
       { header: "Amount", width: 80, align: "right" },
       { header: "Method", width: 80 },
       { header: "Note", width: 250 },
     ],
     ledger.payments.map((p, i) => ({
       shade: i % 2 === 1,
-      cells: [p.paidOn, formatMonth(p.forMonth), pdfMoney(p.amount), titleCase(p.method), p.note],
+      cells: [p.paidOn, formatCycle(p), pdfMoney(p.amount), titleCase(p.method), p.note],
     })),
     "No payments recorded.",
   );

@@ -3,7 +3,7 @@
  * The page builds one item per rental with something to remind about, using the same
  * reminder rules as the single "Remind on WhatsApp" button (src/lib/whatsapp.ts).
  */
-import { formatMonth } from "./rent";
+import { formatCycle } from "./rent";
 import { reminderDue, type ReminderKind, type ReminderRental } from "./whatsapp";
 
 /** "Due soon" items are listed only when their due date is at most this many days away. */
@@ -31,7 +31,7 @@ export type BulkReminderItem = {
   kind: ReminderKind;
   /** Outstanding amount the reminder covers (minor units). */
   amount: number;
-  /** Months covered, formatted (e.g. "Aug 2026, Sept 2026"). */
+  /** Billing cycles covered, formatted (e.g. "20 Aug – 19 Sept 2026, 20 Sept – 19 Oct 2026"). */
   months: string;
   /** Earliest unpaid due date (YYYY-MM-DD). */
   dueDate: string;
@@ -75,7 +75,7 @@ export function buildBulkItems(
       propertyName: rental.propertyName,
       kind: due.kind,
       amount: due.amount,
-      months: due.months.map((m) => formatMonth(m.month)).join(", "),
+      months: due.months.map((m) => formatCycle(m)).join(", "),
       dueDate: due.dueDate,
       url: button.url,
       message: button.message,

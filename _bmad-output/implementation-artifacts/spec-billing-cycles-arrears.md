@@ -70,6 +70,13 @@ context:
 
 ## Implementation Notes
 
+- Cycle maths in `src/lib/rent.ts`: `addMonthsClamped`, `cycleMonthOn`, `finalCycleMonth`, `cycleFor`, `cycleRent`, `cycleBill`, `formatCycle`/`formatCycleMonth`, `paymentPeriodOptions`. `RentMonth` gained `start`/`end`; `month` stays the key.
+- Month-keyed extras seam: `chargesForMonth(rental, keyMonth)` (stored charges + WiFi plan items) is added to the cycle starting in that month by `cycleBill`; never pro-rated.
+- Delegated: a move-out exactly on an anniversary ends with the previous cycle (no 1-day cycle). Pro-rating rounds to the nearest major unit.
+- Pay links (`payDue`) now ask only for cycles whose due date has arrived, plus cycles up to the link's `through` key (the current, not-yet-due cycle is not demanded).
+- Payment form "For period" select: `src/components/payment-period-fields.tsx` (swaps periods when the rental changes on /payments/new).
+- Move-out / rental date edits refuse payments or charges after the final cycle key.
+
 ## Spec Change Log
 
 ## Review Triage Log

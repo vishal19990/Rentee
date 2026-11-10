@@ -87,7 +87,7 @@ export default async function PropertyPage({ params }: { params: Promise<{ id: s
                 <DetailList
                   items={[
                     { label: "Tenant", value: <Link className="link inline-flex items-center gap-2" href={`/tenants/${active.tenantId}`}><TenantAvatar tenantId={active.tenantId} photo={active.tenantPhoto} name={active.tenantName} size="sm" />{active.tenantName}</Link> },
-                    { label: "Rent", value: `${formatMoney(active.currentRent)} / month, due day ${active.dueDay}` },
+                    { label: "Rent", value: `${formatMoney(active.currentRent)} / month, paid at the end of each cycle` },
                     { label: "Moved in", value: formatDate(active.moveInDate) },
                     {
                       label: "Move-out",

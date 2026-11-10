@@ -8,7 +8,7 @@ import { chargeLabel } from "./charges";
 import { expenseCategoryLabel } from "./expenses";
 import { fyMonths, fyOf } from "./fy";
 import { profitReport, type ProfitExpense, type ProfitPayment } from "./profit";
-import { monthOf, type MonthStatus, type RentMonth } from "./rent";
+import { addDays, addMonths, monthOf, type MonthStatus, type RentMonth } from "./rent";
 
 /* ---------------- monthly collections ---------------- */
 
@@ -24,6 +24,10 @@ export type CollectionRow = {
   rentalId: string;
   propertyName: string;
   tenantName: string;
+  /** The billing cycle: key month and period. */
+  cycleMonth: string;
+  start: string;
+  end: string;
   dueDate: string;
   rent: number;
   charges: number;
@@ -48,8 +52,9 @@ export type CollectionsReport = {
 const zeroTotals = (): CollectionTotals => ({ rent: 0, charges: 0, due: 0, paid: 0, balance: 0 });
 
 /**
- * Who owed what for one month and how much of it was collected. A rental is included when
- * the month is in its schedule (move-in month through the current / move-out month).
+ * Who owed what in one calendar month and how much of it was collected: every billing cycle
+ * (from the rentals' schedules) whose **due date** falls in the month — rent is paid at the end
+ * of a cycle, so a cycle 20 Oct – 19 Nov is collected in November.
  * Rows: unpaid first (largest balance first), then by property name.
  */
 export function collectionsReport(
@@ -59,13 +64,15 @@ export function collectionsReport(
 ): CollectionsReport {
   const rows: CollectionRow[] = [];
   const totals = zeroTotals();
-  for (const r of rentals) {
-    const m = r.schedule.find((s) => s.month === month);
-    if (!m) continue;
+  for (const r of rentals) for (const m of r.schedule) {
+    if (monthOf(m.dueDate) !== month) continue;
     rows.push({
       rentalId: r.id,
       propertyName: r.propertyName,
       tenantName: r.tenantName,
+      cycleMonth: m.month,
+      start: m.start,
+      end: m.end,
       dueDate: m.dueDate,
       rent: m.rent,
       charges: m.charges,
@@ -103,7 +110,10 @@ export function collectionsByMonth(
 /* ---------------- tenant ledger ---------------- */
 
 export type LedgerMonth = {
+  /** Billing cycle key (YYYY-MM) and period. */
   month: string;
+  start: string;
+  end: string;
   dueDate: string;
   rent: number;
   charges: number;
@@ -131,7 +141,8 @@ export type LedgerDepositEntry = {
 
 export type TenantLedger = {
   months: LedgerMonth[];
-  payments: LedgerPayment[];
+  /** Payments with the period of the cycle they are for. */
+  payments: (LedgerPayment & { start: string; end: string })[];
   deposit: LedgerDepositEntry[];
   totals: { rent: number; charges: number; due: number; paid: number; outstanding: number; overdue: number };
   depositHeld: number;
@@ -140,7 +151,7 @@ export type TenantLedger = {
 };
 
 /**
- * Per-rental ledger: every scheduled month (oldest first) with rent + charges due, paid and
+ * Per-rental ledger: every scheduled billing cycle (oldest first) with rent + charges due, paid and
  * balance plus a running outstanding; the payments (oldest first); and the deposit ledger with
  * the held balance after each entry.
  */
@@ -164,6 +175,8 @@ export function tenantLedger(
       if (m.pastDue) totals.overdue += m.balance;
       return {
         month: m.month,
+        start: m.start,
+        end: m.end,
         dueDate: m.dueDate,
         rent: m.rent,
         charges: m.charges,
@@ -187,7 +200,14 @@ export function tenantLedger(
       return { date: e.date, kind: e.kind, label, amount: e.amount, reason: e.reason, held };
     });
 
-  const sortedPayments = [...payments].sort((a, b) => a.paidOn.localeCompare(b.paidOn) || a.forMonth.localeCompare(b.forMonth));
+  // Each payment's billing-cycle period (from the schedule; a calendar month outside it).
+  const periodOf = new Map(schedule.map((m) => [m.month, { start: m.start, end: m.end }]));
+  const sortedPayments = [...payments]
+    .sort((a, b) => a.paidOn.localeCompare(b.paidOn) || a.forMonth.localeCompare(b.forMonth))
+    .map((p) => ({
+      ...p,
+      ...(periodOf.get(p.forMonth) ?? { start: `${p.forMonth}-01`, end: addDays(`${addMonths(p.forMonth, 1)}-01`, -1) }),
+    }));
   const ledger: TenantLedger = { months, payments: sortedPayments, deposit, totals, depositHeld: held };
   if (depositTerms) ledger.depositStatus = depositStatus(depositTerms, depositEntries);
   return ledger;

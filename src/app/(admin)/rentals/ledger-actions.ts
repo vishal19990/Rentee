@@ -7,7 +7,7 @@ import { connectDB } from "@/lib/db";
 import { addDepositEntry, addDepositPayment, changeDepositEntry, loadDeposit } from "@/lib/deposit-store";
 import { depositPaymentLabel, depositReminderMessage, type DepositMethod } from "@/lib/deposit";
 import { formatMoneyShort } from "@/lib/money";
-import { formatMonth, localToday, monthOf, payableMonths, toISODate } from "@/lib/rent";
+import { finalCycleMonth, formatCycleMonth, localToday, monthOf, payableMonths, toISODate } from "@/lib/rent";
 import { syncNotificationsSafe } from "@/lib/notification-sync";
 import { chargeSchema, depositEntrySchema, depositPaymentSchema, parseForm, rentChangeSchema, type ActionState } from "@/lib/validation";
 import { NO_PHONE_TOOLTIP, normalizePhone } from "@/lib/whatsapp";
@@ -54,7 +54,7 @@ export async function changeRent(id: string, _prev: ActionState, fd: FormData): 
   if (!found) return NOT_FOUND;
   const { _id, rental } = found;
   const firstMonth = monthOf(toISODate(rental.moveInDate));
-  const lastMonth = rental.moveOutDate ? monthOf(toISODate(rental.moveOutDate)) : null;
+  const lastMonth = finalCycleMonth(rental);
   const parsed = parseForm(rentChangeSchema({ firstMonth, lastMonth }), fd);
   if (!parsed.success) return parsed.state;
   const { effectiveMonth, monthlyRent, note } = parsed.data;
@@ -67,7 +67,7 @@ export async function changeRent(id: string, _prev: ActionState, fd: FormData): 
   );
   await afterChange(id, rental);
   const verb = res.upsertedCount ? "set" : "updated";
-  return { ok: true, message: `Rent from ${formatMonth(effectiveMonth)} ${verb}.` };
+  return { ok: true, message: `Rent from the cycle ${formatCycleMonth(rental, effectiveMonth)} ${verb}.` };
 }
 
 export async function deleteRentChange(id: string, _prev: ActionState, fd: FormData): Promise<ActionState> {
@@ -96,7 +96,7 @@ export async function addCharge(id: string, _prev: ActionState, fd: FormData): P
 
   await Charge.create({ rental: _id, month, type, amount, meter, note });
   await afterChange(id, rental);
-  return { ok: true, message: `Charge added to ${formatMonth(month)}.` };
+  return { ok: true, message: `Charge added to the cycle ${formatCycleMonth(rental, month)}.` };
 }
 
 export async function deleteCharge(id: string, _prev: ActionState, fd: FormData): Promise<ActionState> {

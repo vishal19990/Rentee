@@ -34,7 +34,6 @@ const base = (over: Partial<RentalLike> = {}): RentalLike => ({
   moveInDate: "2026-06-01",
   moveOutDate: null,
   monthlyRent: R(10000),
-  dueDay: 5,
   ...over,
 });
 
@@ -97,9 +96,10 @@ describe("rent changes (F4)", () => {
     expect(bad.success).toBe(false);
   });
 
-  it("due-soon notification for next month uses next month's rent (after a change)", () => {
+  it("due-soon notification for a cycle uses that cycle's rent (after a change)", () => {
+    // Moved in 1 Sep; rent 11,000 from the cycle starting in Oct (1–31 Oct, due 1 Nov).
     const r = base({ moveInDate: "2026-09-01", rentChanges: [{ effectiveMonth: "2026-10", monthlyRent: R(11000) }] });
-    const today = "2026-10-02";
+    const today = "2026-10-29";
     const input: RentalInput = {
       id: "r1",
       propertyId: "p1",
@@ -107,22 +107,22 @@ describe("rent changes (F4)", () => {
       tenantId: "t1",
       tenantName: "Asha",
       status: "active",
+      moveInDate: "2026-09-01",
       moveOutDate: null,
       monthlyRent: r.monthlyRent,
       rentChanges: r.rentChanges,
-      dueDay: 5,
-      schedule: rentSchedule(r, [{ forMonth: "2026-09", amount: R(10000) }, { forMonth: "2026-10", amount: R(11000) }], today),
+      schedule: rentSchedule(r, [{ forMonth: "2026-09", amount: R(10000) }], today),
     };
-    // Everything billed is paid, so next month (Nov) is the candidate: due 5 Nov, outside 3 days; widen the threshold.
     const out = desiredNotifications({
       rentals: [input],
       maintenance: [],
-      thresholds: { ...DEFAULT_THRESHOLDS, dueSoonDays: 30 },
-      today: "2026-10-10",
-      now: new Date("2026-10-10T12:00:00Z"),
+      thresholds: DEFAULT_THRESHOLDS,
+      today,
+      now: new Date("2026-10-29T12:00:00Z"),
     });
-    const soon = out.find((n) => n.type === "rent_due_soon");
-    expect(soon?.body).toContain("₹11,000");
+    const soon = out.filter((n) => n.type === "rent_due_soon");
+    expect(soon).toHaveLength(1);
+    expect(soon[0].body).toBe("₹11,000.00 from Asha for 1 Oct – 31 Oct 2026 is due on 1 Nov 2026.");
   });
 });
 
@@ -180,13 +180,14 @@ describe("utility charges (F5)", () => {
   });
 
   it("I/O matrix: partial with charges — Oct rent 10,000 + charge 1,200, paid 10,000 -> partial, balance 1,200, reminder 1,200", () => {
+    // Cycle 1–31 Oct is due 1 Nov; on 2 Nov it is past due.
     const r = base({ moveInDate: "2026-10-01", charges: [{ month: "2026-10", type: "electricity", amount: R(1200) }] });
-    const today = "2026-10-20";
+    const today = "2026-11-02";
     const schedule = rentSchedule(r, [{ forMonth: "2026-10", amount: R(10000) }], today);
     expect(schedule[0]).toMatchObject({ status: "partial", balance: R(1200) });
     expect(summarize(schedule).overdueAmount).toBe(R(1200));
 
-    const reminderRental = { status: "active" as const, monthlyRent: r.monthlyRent, dueDay: 5, moveOutDate: null, schedule };
+    const reminderRental = { status: "active" as const, monthlyRent: r.monthlyRent, moveInDate: "2026-10-01", moveOutDate: null, schedule };
     expect(reminderDue(reminderRental, today)?.amount).toBe(R(1200));
     const built = buildReminder({
       rental: reminderRental,
@@ -196,7 +197,7 @@ describe("utility charges (F5)", () => {
       template: "{amount} for {months}",
       today,
     });
-    expect(built?.message).toBe("₹1,200 for Oct 2026");
+    expect(built?.message).toBe("₹1,200 for 1 Oct – 31 Oct 2026");
   });
 
   it("charges are merged per type and a charge in a future month extends the schedule", () => {
@@ -222,7 +223,7 @@ describe("utility charges (F5)", () => {
     const today = "2026-09-20";
     const schedule = rentSchedule(r, [{ forMonth: "2026-09", amount: R(10000) }], today);
     // October already appears in the schedule because it has a charge.
-    const due = reminderDue({ status: "active", monthlyRent: r.monthlyRent, charges: r.charges, dueDay: 5, moveOutDate: null, schedule }, today);
+    const due = reminderDue({ status: "active", monthlyRent: r.monthlyRent, charges: r.charges, moveInDate: "2026-09-01", moveOutDate: null, schedule }, today);
     expect(due).toMatchObject({ kind: "due_soon", amount: R(10300) });
     // Next month not yet listed: computed with dueForMonth.
     const r2 = base({ moveInDate: "2026-09-01", charges: [{ month: "2026-11", type: "water", amount: R(300) }] });

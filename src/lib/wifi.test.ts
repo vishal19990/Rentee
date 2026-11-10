@@ -36,7 +36,6 @@ const rental = (over: Partial<RentalLike> = {}): RentalLike => ({
   moveInDate: "2026-06-01",
   moveOutDate: null,
   monthlyRent: 800000,
-  dueDay: 5,
   ...over,
 });
 
@@ -82,7 +81,8 @@ describe("WiFi charge items", () => {
 
   it("partial with WiFi: Nov rent 8,000 + WiFi 200, paid 8,000 -> partial, balance 200", () => {
     const r = rental({ wifiPlans: [plan()] });
-    const nov = rentSchedule(r, [{ forMonth: "2026-11", amount: 800000 }], "2026-11-20").find((m) => m.month === "2026-11")!;
+    // Billing cycles: the Nov cycle (1–30 Nov, WiFi for Nov added) is due 1 Dec; partial once past it.
+    const nov = rentSchedule(r, [{ forMonth: "2026-11", amount: 800000 }], "2026-12-02").find((m) => m.month === "2026-11")!;
     expect(nov.status).toBe("partial");
     expect(nov.balance).toBe(20000);
   });
@@ -123,11 +123,11 @@ describe("WiFi charge items", () => {
   it("reminders and pay links include WiFi", () => {
     const r = rental({ moveInDate: "2026-11-01", wifiPlans: [plan()] });
     const schedule = rentSchedule(r, [], "2026-11-20");
-    const due = reminderDue({ ...r, status: "active", moveOutDate: null, schedule }, "2026-11-20");
+    const due = reminderDue({ ...r, moveInDate: "2026-11-01", status: "active", moveOutDate: null, schedule }, "2026-11-20");
     expect(due?.amount).toBe(820000);
     // Next month's "due soon" amount (outside the schedule) also includes WiFi.
     const paid = rentSchedule(r, [{ forMonth: "2026-11", amount: 820000 }], "2026-11-20");
-    expect(reminderDue({ ...r, status: "active", moveOutDate: null, schedule: paid }, "2026-11-20")?.amount).toBe(820000);
+    expect(reminderDue({ ...r, moveInDate: "2026-11-01", status: "active", moveOutDate: null, schedule: paid }, "2026-11-20")?.amount).toBe(820000);
     const pay = payDue({ ...r, moveInDate: "2026-11-01", moveOutDate: null, schedule: paid }, "2026-12", "2026-11-20");
     expect(pay.amount).toBe(820000);
   });

@@ -96,12 +96,12 @@ export async function loadReceipt(paymentId: string, view: "admin" | "public"): 
   });
   const breakdown = receiptBreakdown(
     {
+      moveInDate: rental.moveInDate,
+      moveOutDate: rental.moveOutDate ?? null,
       monthlyRent: rental.monthlyRent,
       rentChanges: changes.map((c) => ({ effectiveMonth: c.effectiveMonth, monthlyRent: c.monthlyRent })),
       charges: charges.map((c) => ({ month: c.month, type: c.type, amount: c.amount })),
       wifiPlans: wifiPlans.get(toId(rental._id)) ?? [],
-      moveInDate: rental.moveInDate,
-      moveOutDate: rental.moveOutDate ?? null,
     },
     asLike(payment),
     monthPayments.map(asLike),

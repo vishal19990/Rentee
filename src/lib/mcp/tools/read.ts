@@ -12,7 +12,7 @@ import { expenseCategoryLabel } from "../../expenses";
 import { dateFromISO } from "../../format";
 import { fyOf, fyRange, isFy } from "../../fy";
 import { listNotifications } from "../../notification-sync";
-import { addDays, addMonths, localToday, monthOf, toISODate } from "../../rent";
+import { addDays, addMonths, formatCycle, formatCycleMonth, localToday, monthOf, toISODate } from "../../rent";
 import { loadFySummary } from "../../reports-data";
 import { reminderDue } from "../../whatsapp";
 import { DUE_SOON_WINDOW_DAYS } from "../../bulk-reminders";
@@ -42,7 +42,8 @@ export function rentalSummary(r: RentalRow) {
     moveInDate: r.moveInDate,
     moveOutDate: r.moveOutDate,
     currentRent: money(r.currentRent),
-    dueDay: r.dueDay,
+    // Rent is billed in monthly cycles from the move-in day and due at each cycle's end.
+    billingDay: Number(r.moveInDate.slice(8, 10)),
     depositQuoted: money(r.deposit),
     depositBalanceDue: money(r.depositBalance),
     totalDue: money(r.summary.totalDue),
@@ -59,7 +60,9 @@ function overdueItem(r: RentalRow) {
     property: r.propertyName,
     tenant: r.tenantName,
     overdue: money(r.summary.overdueAmount),
-    months: r.schedule.filter((m) => m.pastDue && m.balance > 0).map((m) => ({ month: m.month, dueDate: m.dueDate, balance: money(m.balance) })),
+    months: r.schedule
+      .filter((m) => m.pastDue && m.balance > 0)
+      .map((m) => ({ month: m.month, period: formatCycle(m), dueDate: m.dueDate, balance: money(m.balance) })),
   };
 }
 
@@ -108,7 +111,11 @@ export function registerReadTools(server: McpServer, run: (fn: () => Promise<Ret
           Enquiry.countDocuments({ status: { $in: OPEN_STATUSES }, followUpDate: { $ne: null, $lte: new Date(`${today}T00:00:00Z`) } }),
           Enquiry.countDocuments({ status: { $in: OPEN_STATUSES }, visitAt: { $gte: todayStart, $lt: new Date(y, mo - 1, d) } }),
         ]);
-        const expected = active.reduce((s, r) => s + (r.schedule.find((m) => m.month === thisMonth)?.due ?? 0), 0);
+        // Rent due this month: billing cycles whose due date (cycle end) falls in this calendar month.
+        const expected = active.reduce(
+          (s, r) => s + r.schedule.filter((m) => monthOf(m.dueDate) === thisMonth).reduce((t, m) => t + m.due, 0),
+          0,
+        );
         return ok({
           today,
           occupancy: { occupied, properties: live.size, percent: live.size ? Math.round((occupied / live.size) * 100) : 0 },
@@ -340,7 +347,7 @@ export function registerReadTools(server: McpServer, run: (fn: () => Promise<Ret
     {
       title: "Get rental",
       description:
-        "One rental in full: month-by-month rent schedule (rent, charges, due, paid, balance, status), utility charges, rent changes, recent payments, the security deposit ledger and status, and the latest agreement.",
+        "One rental in full: rent schedule by billing cycle (cycles run monthly from the move-in day and are due at their end; each has its key month, period, due date, rent, charges, due, paid, balance, status), utility charges, rent changes, recent payments, the security deposit ledger and status, and the latest agreement.",
       inputSchema: { rentalId: id("Rental") },
       annotations: READ,
     },
@@ -363,6 +370,9 @@ export function registerReadTools(server: McpServer, run: (fn: () => Promise<Ret
           charges: r.charges.map((c) => ({ month: c.month, type: c.type, amount: money(c.amount) })),
           schedule: r.schedule.map((m) => ({
             month: m.month,
+            period: formatCycle(m),
+            start: m.start,
+            end: m.end,
             dueDate: m.dueDate,
             rent: money(m.rent),
             charges: money(m.charges),
@@ -375,6 +385,7 @@ export function registerReadTools(server: McpServer, run: (fn: () => Promise<Ret
           payments: payments.map((p) => ({
             id: toId(p._id),
             forMonth: p.forMonth,
+            period: formatCycleMonth(r, p.forMonth),
             amount: money(p.amount),
             paidOn: toISODate(p.paidOn),
             method: p.method,
@@ -402,7 +413,7 @@ export function registerReadTools(server: McpServer, run: (fn: () => Promise<Ret
     "list_overdue_rent",
     {
       title: "Overdue rent",
-      description: "Rentals with overdue rent (past the due day and not fully paid), largest first, with the unpaid months.",
+      description: "Rentals with overdue rent (billing cycles past their due date — the cycle end — and not fully paid), largest first, with the unpaid cycles.",
       annotations: READ,
     },
     () =>
@@ -436,7 +447,8 @@ export function registerReadTools(server: McpServer, run: (fn: () => Promise<Ret
         if (Object.keys(range).length) q.paidOn = range;
         if (rentalId) q.rental = asObjectId(rentalId);
         const rows = await Payment.find(q).sort({ paidOn: -1, createdAt: -1 }).limit(limit ?? 100).lean();
-        const rentals = await Rental.find({ _id: { $in: rows.map((p) => p.rental) } }).select("property tenant").lean();
+        const rentals = await Rental.find({ _id: { $in: rows.map((p) => p.rental) } }).select("property tenant moveInDate moveOutDate").lean();
+        const stayOf = new Map(rentals.map((r) => [toId(r._id), r]));
         const [props, tenants] = await Promise.all([
           propertyNames(rentals.map((r) => r.property)),
           Tenant.find({ _id: { $in: rentals.map((r) => r.tenant) } }).select("name").lean(),
@@ -450,6 +462,7 @@ export function registerReadTools(server: McpServer, run: (fn: () => Promise<Ret
             rentalId: toId(p.rental),
             ...(rentalInfo.get(toId(p.rental)) ?? { property: "", tenant: "" }),
             forMonth: p.forMonth,
+            period: stayOf.has(toId(p.rental)) ? formatCycleMonth(stayOf.get(toId(p.rental))!, p.forMonth) : p.forMonth,
             amount: money(p.amount),
             paidOn: toISODate(p.paidOn),
             method: p.method,

@@ -43,6 +43,7 @@ const rentalSchema = new Schema(
      * doesn't re-create it from the deposit / advance fields.
      */
     depositInitialRemoved: { type: Boolean, default: false },
+    // Legacy: rent is now billed in cycles from the move-in day (lib/rent.ts). Kept for history; unused.
     dueDay: { type: Number, required: true, min: 1, max: 28, default: 1 },
     status: { type: String, enum: ["active", "moved_out"], required: true, default: "active", index: true },
   },

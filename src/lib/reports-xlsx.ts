@@ -5,7 +5,7 @@
  */
 import ExcelJS from "exceljs";
 import { CURRENCY, minorDigits } from "./money";
-import { formatMonth } from "./rent";
+import { formatCycle, formatMonth } from "./rent";
 import {
   MONTH_STATUS_LABELS,
   type CollectionsMonth,
@@ -90,10 +90,15 @@ export async function collectionsXlsx(data: { report: CollectionsReport; byMonth
   addTable(
     wb,
     formatMonth(report.month),
-    [`Collections — ${formatMonth(report.month)}`, `Cash received in the month (any rent month): ${major(report.received)} ${CURRENCY}`],
+    [
+      `Collections — ${formatMonth(report.month)}`,
+      "Billing cycles whose due date falls in the month (rent is paid at the end of each cycle).",
+      `Cash received in the month (any period): ${major(report.received)} ${CURRENCY}`,
+    ],
     [
       { header: "Property", key: "property", width: 28 },
       { header: "Tenant", key: "tenant", width: 24 },
+      { header: "Period", key: "period", width: 24 },
       { header: "Due date", key: "dueDate", width: 12 },
       { header: "Rent", key: "rent", width: 14, money: true },
       { header: "Charges", key: "charges", width: 14, money: true },
@@ -106,6 +111,7 @@ export async function collectionsXlsx(data: { report: CollectionsReport; byMonth
     report.rows.map((r) => ({
       property: r.propertyName,
       tenant: r.tenantName,
+      period: formatCycle(r),
       dueDate: r.dueDate,
       rent: r.rent,
       charges: r.charges,
@@ -121,7 +127,7 @@ export async function collectionsXlsx(data: { report: CollectionsReport; byMonth
   addTable(
     wb,
     `FY ${fy} by month`,
-    [`Collections by month — FY ${fy}`, "Due / paid / balance are for each rent month; received is cash by payment date."],
+    [`Collections by month — FY ${fy}`, "Due / paid / balance are for the cycles due in each month; received is cash by payment date."],
     [
       { header: "Month", key: "month", width: 12 },
       { header: "Rentals", key: "rentals", width: 9 },
@@ -157,7 +163,7 @@ export async function ledgerXlsx(h: LedgerHeading, ledger: TenantLedger): Promis
     "Rent",
     title,
     [
-      { header: "Month", key: "month", width: 12 },
+      { header: "Period", key: "month", width: 24 },
       { header: "Due date", key: "dueDate", width: 12 },
       { header: "Rent", key: "rent", width: 14, money: true },
       { header: "Charges", key: "charges", width: 14, money: true },
@@ -169,7 +175,7 @@ export async function ledgerXlsx(h: LedgerHeading, ledger: TenantLedger): Promis
       { header: "Running outstanding", key: "outstanding", width: 20, money: true },
     ],
     ledger.months.map((m) => ({
-      month: formatMonth(m.month),
+      month: formatCycle(m),
       dueDate: m.dueDate,
       rent: m.rent,
       charges: m.charges,
@@ -195,12 +201,12 @@ export async function ledgerXlsx(h: LedgerHeading, ledger: TenantLedger): Promis
     title,
     [
       { header: "Paid on", key: "paidOn", width: 12 },
-      { header: "For month", key: "forMonth", width: 12 },
+      { header: "For period", key: "forMonth", width: 24 },
       { header: "Amount", key: "amount", width: 14, money: true },
       { header: "Method", key: "method", width: 14 },
       { header: "Note", key: "note", width: 36 },
     ],
-    ledger.payments.map((p) => ({ ...p, forMonth: formatMonth(p.forMonth), method: titleCase(p.method) })),
+    ledger.payments.map((p) => ({ paidOn: p.paidOn, forMonth: formatCycle(p), amount: p.amount, method: titleCase(p.method), note: p.note })),
     { paidOn: "Total", amount: ledger.payments.reduce((s, p) => s + p.amount, 0) },
   );
   const ds = ledger.depositStatus;

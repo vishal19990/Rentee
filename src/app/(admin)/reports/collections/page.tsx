@@ -4,7 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { formatDate } from "@/lib/format";
 import { fyOf } from "@/lib/fy";
 import { formatMoney } from "@/lib/money";
-import { formatMonth, localToday, monthOf } from "@/lib/rent";
+import { formatCycle, formatMonth, localToday, monthOf } from "@/lib/rent";
 import { isMonthKey, loadCollections } from "@/lib/reports-data";
 import { Card, EmptyState, PageHeader, StatCard, StatusBadge, Table, TBody, Td, Th, THead } from "@/components/ui";
 import { IconAlert, IconCheck, IconReceipt, IconWallet } from "@/components/icons";
@@ -17,7 +17,7 @@ export default async function CollectionsPage({ searchParams }: { searchParams: 
   const sp = await searchParams;
   const today = localToday();
   const thisMonth = monthOf(today);
-  // Rent schedules run through the current month, so later months have nothing to show yet.
+  // Rent schedules list cycles started by today, so later months have (almost) nothing to show yet.
   const month = isMonthKey(sp.month) && sp.month <= thisMonth ? sp.month : thisMonth;
   const fy = fyOf(`${month}-01`);
   const { report, byMonth } = await loadCollections(month, fy, today);
@@ -29,7 +29,7 @@ export default async function CollectionsPage({ searchParams }: { searchParams: 
       <PageHeader
         back={{ href: "/reports", label: "Reports" }}
         title="Monthly collections"
-        description={`${formatMonth(month)}: rent plus charges due for the month, and what has been paid towards it.`}
+        description={`${formatMonth(month)}: billing cycles whose due date falls in the month (rent is paid at the end of each cycle, so a cycle 20 Oct – 19 Nov is collected in November) — rent plus charges, and what has been paid towards them.`}
         actions={<DownloadLink href={`/api/reports/collections?month=${month}`} label="Download Excel" primary />}
       />
 
@@ -59,6 +59,7 @@ export default async function CollectionsPage({ searchParams }: { searchParams: 
               <THead>
                 <Th>Property</Th>
                 <Th>Tenant</Th>
+                <Th>Period</Th>
                 <Th>Due date</Th>
                 <Th className="text-right">Due</Th>
                 <Th className="text-right">Paid</Th>
@@ -67,13 +68,14 @@ export default async function CollectionsPage({ searchParams }: { searchParams: 
               </THead>
               <TBody>
                 {report.rows.map((r) => (
-                  <tr key={r.rentalId} className="hover:bg-slate-50/60">
+                  <tr key={`${r.rentalId}-${r.cycleMonth}`} className="hover:bg-slate-50/60">
                     <Td className="font-medium text-slate-900">
                       <Link href={`/rentals/${r.rentalId}`} className="link">
                         {r.propertyName}
                       </Link>
                     </Td>
                     <Td>{r.tenantName}</Td>
+                    <Td className="whitespace-nowrap text-slate-600">{formatCycle(r, { short: true })}</Td>
                     <Td className="whitespace-nowrap text-slate-600">{formatDate(r.dueDate)}</Td>
                     <Td className="text-right tabular-nums">
                       {formatMoney(r.due)}
@@ -93,6 +95,7 @@ export default async function CollectionsPage({ searchParams }: { searchParams: 
                   <Td>Total</Td>
                   <Td />
                   <Td />
+                  <Td />
                   <Td className="text-right tabular-nums">{formatMoney(t.due)}</Td>
                   <Td className="text-right tabular-nums">{formatMoney(t.paid)}</Td>
                   <Td className="text-right tabular-nums">{formatMoney(t.balance)}</Td>
@@ -103,7 +106,7 @@ export default async function CollectionsPage({ searchParams }: { searchParams: 
           )}
         </Card>
 
-        <Card title={`FY ${fy} by month`} description="Due, paid and balance per rent month; received is cash by payment date." bodyClassName="p-0">
+        <Card title={`FY ${fy} by month`} description="Due, paid and balance for the cycles due in each month; received is cash by payment date." bodyClassName="p-0">
           <Table>
             <THead>
               <Th>Month</Th>

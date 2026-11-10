@@ -5,7 +5,7 @@ import { asObjectId, loadRentals } from "@/lib/data";
 import { getUpiSettings } from "@/lib/landlord-settings";
 import { formatMoney } from "@/lib/money";
 import { firstName } from "@/lib/receipts";
-import { formatMonth, localToday } from "@/lib/rent";
+import { formatCycle, localToday } from "@/lib/rent";
 import { verifyPayToken } from "@/lib/signed-links";
 import { payDue, upiUri } from "@/lib/upi";
 
@@ -35,14 +35,14 @@ export default async function PayPage({ params }: { params: Promise<{ token: str
   if (!rental) notFound();
 
   const due = payDue(rental, v.link.through, today);
-  const monthsLabel = due.months.map((m) => formatMonth(m.month)).join(", ");
+  const monthsLabel = due.months.map((m) => formatCycle(m)).join(", ");
   const uri =
     due.amount > 0
       ? upiUri({
           vpa: upi.upiId,
           payeeName: upi.payee,
           amount: due.amount,
-          note: `Rent ${due.months.length === 1 ? formatMonth(due.months[0].month) : `${due.months.length} months`} ${rental.propertyName}`,
+          note: `Rent ${due.months.length === 1 ? formatCycle(due.months[0], { short: true }) : `${due.months.length} months`} ${rental.propertyName}`,
         })
       : null;
   const qr = uri ? await QRCode.toString(uri, { type: "svg", margin: 1, errorCorrectionLevel: "M", width: 240 }) : null;
@@ -71,7 +71,7 @@ export default async function PayPage({ params }: { params: Promise<{ token: str
                 <ul className="divide-y divide-slate-100 text-sm">
                   {due.months.map((m) => (
                     <li key={m.month} className="flex justify-between gap-3 py-2">
-                      <span className="text-slate-600">{formatMonth(m.month)}</span>
+                      <span className="text-slate-600">{formatCycle(m)}</span>
                       <span className="tabular-nums">{formatMoney(m.balance)}</span>
                     </li>
                   ))}

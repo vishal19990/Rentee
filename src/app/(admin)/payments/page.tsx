@@ -5,7 +5,7 @@ import { loadRentals, toId } from "@/lib/data";
 import { connectDB } from "@/lib/db";
 import { dateFromISO, formatDate, titleCase } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
-import { addMonths, formatMonth, localToday, monthOf } from "@/lib/rent";
+import { addMonths, formatCycleMonth, formatMonth, localToday, monthOf } from "@/lib/rent";
 import { Payment } from "@/models/Payment";
 import { ButtonLink, EmptyState, PageHeader, Table, TBody, Td, Th, THead } from "@/components/ui";
 import { IconArrowLeft, IconPlus, IconWallet } from "@/components/icons";
@@ -68,7 +68,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
             <THead>
               <Th>Paid on</Th>
               <Th>Property / tenant</Th>
-              <Th>For month</Th>
+              <Th>For period</Th>
               <Th>Method</Th>
               <Th className="text-right">Amount</Th>
               <Th className="text-right">
@@ -94,7 +94,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
                         "—"
                       )}
                     </Td>
-                    <Td className="whitespace-nowrap">{formatMonth(p.forMonth)}</Td>
+                    <Td className="whitespace-nowrap">{l ? formatCycleMonth(l, p.forMonth, { short: true }) : formatMonth(p.forMonth)}</Td>
                     <Td>{p.method === "upi" ? "UPI" : titleCase(p.method)}</Td>
                     <Td className="text-right font-medium tabular-nums">{formatMoney(p.amount)}</Td>
                     <Td className="text-right">

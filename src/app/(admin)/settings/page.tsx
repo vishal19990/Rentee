@@ -47,15 +47,17 @@ export default async function SettingsPage() {
     getDefaultElectricityRate(),
   ]);
   const samplePayLink = (await getUpiSettings()).enabled ? `${await appBaseUrl()}/p/…` : "";
-  const sampleMonth = addMonths(monthOf(localToday()), -1);
+  // Sample billing cycle: moved in on the 20th, cycle 20 → 19, due on the 20th of last month.
+  const sampleMonth = addMonths(monthOf(localToday()), -2);
+  const sampleDue = `${addMonths(sampleMonth, 1)}-20`;
   const preview = renderTemplate(
     template,
     reminderVars(
       {
         kind: "overdue",
-        months: [{ month: sampleMonth, dueDate: `${sampleMonth}-05`, balance: 1500000 }],
+        months: [{ month: sampleMonth, start: `${sampleMonth}-20`, end: `${addMonths(sampleMonth, 1)}-19`, dueDate: sampleDue, balance: 1500000 }],
         amount: 1500000,
-        dueDate: `${sampleMonth}-05`,
+        dueDate: sampleDue,
       },
       "Asha Menon",
       "Palm Grove Villa",

@@ -198,7 +198,8 @@ const rentalTerms = {
   moveInDate: isoDate("Move-in date"),
   monthlyRent: money("Monthly rent"),
   deposit: money("Deposit", { positive: false, optional: true }),
-  dueDay: intInRange("Due day", 1, 28),
+  // Rent is billed in cycles from the move-in day and paid at each cycle's end (lib/rent.ts);
+  // the stored `dueDay` is legacy and no longer edited or used.
 };
 
 const MOVE_OUT_BEFORE_MOVE_IN = "Move-out date can't be before the move-in date";

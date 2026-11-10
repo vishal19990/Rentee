@@ -68,7 +68,6 @@ export default async function NewRentalPage({
           monthlyRent: selected?.monthlyRent,
           deposit: selected ? selected.monthlyRent * 2 : undefined,
           advanceMaxDate: localToday(),
-          dueDay: 5,
         }}
       />
     </div>

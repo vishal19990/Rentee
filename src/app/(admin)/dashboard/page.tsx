@@ -7,7 +7,7 @@ import { loadRentals, toId } from "@/lib/data";
 import { connectDB } from "@/lib/db";
 import { dateFromISO, formatDate } from "@/lib/format";
 import { formatMoney, formatMoneyCompact } from "@/lib/money";
-import { addDays, addMonths, formatMonth, localToday, monthOf } from "@/lib/rent";
+import { addDays, addMonths, formatCycle, formatMonth, localToday, monthOf } from "@/lib/rent";
 import { reminderButtons } from "@/lib/reminders";
 import { Maintenance } from "@/models/Maintenance";
 import { Payment } from "@/models/Payment";
@@ -66,8 +66,8 @@ export default async function DashboardPage() {
   });
   const collectedThisMonth = incomeByMonth.get(thisMonth) ?? 0;
   const expectedThisMonth = active.reduce((s, l) => {
-    const m = l.schedule.find((x) => x.month === thisMonth);
-    return s + (m ? m.due : 0);
+    // Billing cycles whose due date (cycle end) falls in this calendar month.
+    return s + l.schedule.filter((x) => monthOf(x.dueDate) === thisMonth).reduce((t, x) => t + x.due, 0);
   }, 0);
   const chartMax = Math.max(...chart.map((c) => c.total), 1);
 
@@ -217,7 +217,7 @@ export default async function DashboardPage() {
                           {l.propertyName}
                         </Link>
                         <p className="text-xs text-slate-500">
-                          {l.tenantName} · {months.map((m) => formatMonth(m.month)).join(", ")}
+                          {l.tenantName} · {months.map((m) => formatCycle(m, { short: true })).join(", ")}
                         </p>
                       </div>
                     </div>

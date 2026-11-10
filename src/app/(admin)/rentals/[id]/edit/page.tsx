@@ -32,7 +32,6 @@ export default async function EditRentalPage({ params }: { params: Promise<{ id:
           moveOutDate: r.moveOutDate,
           monthlyRent: r.monthlyRent,
           deposit: r.deposit,
-          dueDay: r.dueDay,
         }}
       />
     </div>

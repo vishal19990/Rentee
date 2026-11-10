@@ -11,7 +11,17 @@
  */
 import { formatDate } from "./format";
 import { formatMoney } from "./money";
-import { addMonths, dueForMonth, formatMonth, monthOf, type ChargeLike, type RentChangeLike, type RentMonth, type WifiPlanLike } from "./rent";
+import {
+  addMonths,
+  cycleBill,
+  cycleMonthOn,
+  finalCycleMonth,
+  formatCycle,
+  type ChargeLike,
+  type RentChangeLike,
+  type RentMonth,
+  type WifiPlanLike,
+} from "./rent";
 
 export const NOTIFICATION_TYPES = [
   "rent_overdue",
@@ -75,13 +85,13 @@ export type RentalInput = {
   tenantId: string;
   tenantName: string;
   status: "active" | "moved_out";
+  moveInDate: string;
   moveOutDate: string | null;
-  /** Original rent; next month's due is computed with rentChanges + charges. */
+  /** Original rent; the next cycle's due is computed with rentChanges + charges. */
   monthlyRent: number;
   rentChanges?: RentChangeLike[];
   charges?: ChargeLike[];
   wifiPlans?: WifiPlanLike[];
-  dueDay: number;
   schedule: RentMonth[];
 };
 
@@ -94,8 +104,6 @@ export type MaintenanceInput = {
   priority: "low" | "medium" | "high" | "urgent";
   createdAt: Date;
 };
-
-const pad = (n: number) => String(n).padStart(2, "0");
 
 /** Whole days from ISO date `from` to ISO date `to` (positive when `to` is later). */
 export function daysBetween(from: string, to: string): number {
@@ -125,7 +133,7 @@ export function desiredNotifications(input: {
     const refs = { rentalId: r.id, propertyId: r.propertyId, tenantId: r.tenantId };
     const link = `/rentals/${r.id}`;
 
-    // Rent overdue: one per rental + month past its due day with a balance (arrears stay
+    // Rent overdue: one per rental + billing cycle past its due date with a balance (arrears stay
     // alerts even after the tenant moves out — the money is still owed).
     for (const m of r.schedule) {
       if (!m.pastDue || m.balance <= 0) continue;
@@ -134,7 +142,7 @@ export function desiredNotifications(input: {
         type: "rent_overdue",
         category: "alert",
         title: `Rent overdue: ${r.propertyName}`,
-        body: `${r.tenantName} owes ${formatMoney(m.balance)} for ${formatMonth(m.month)} (due ${formatDate(m.dueDate)}).`,
+        body: `${r.tenantName} owes ${formatMoney(m.balance)} for ${formatCycle(m)} (due ${formatDate(m.dueDate)}).`,
         link,
         period: m.month,
         ...refs,
@@ -143,18 +151,21 @@ export function desiredNotifications(input: {
 
     if (r.status !== "active") continue;
 
-    // Rent due soon: unpaid month whose due date is within N days (today counts).
-    // Candidates: listed months not yet past due, plus next month (not listed yet).
-    const candidates: { month: string; dueDate: string; balance: number }[] = r.schedule
+    // Rent due soon: unpaid cycle whose due date (cycle end) is within N days (today counts).
+    // Candidates: listed cycles not yet past due, plus the next cycle (not listed yet).
+    const candidates: { month: string; start: string; end: string; dueDate: string; balance: number }[] = r.schedule
       .filter((m) => !m.pastDue && m.balance > 0)
-      .map((m) => ({ month: m.month, dueDate: m.dueDate, balance: m.balance }));
+      .map((m) => ({ month: m.month, start: m.start, end: m.end, dueDate: m.dueDate, balance: m.balance }));
     const lastListed = r.schedule.length ? r.schedule[r.schedule.length - 1].month : null;
     if (lastListed) {
-      const next = addMonths(monthOf(today) > lastListed ? monthOf(today) : lastListed, 1);
+      const current = cycleMonthOn(r, today);
+      const next = addMonths(current && current > lastListed ? current : lastListed, 1);
       const listedNext = r.schedule.find((m) => m.month === next);
-      const withinStay = !r.moveOutDate || next <= monthOf(r.moveOutDate);
-      if (!listedNext && withinStay) {
-        candidates.push({ month: next, dueDate: `${next}-${pad(r.dueDay)}`, balance: dueForMonth(r, next) });
+      const finalMonth = finalCycleMonth(r);
+      const bill = !listedNext && (!finalMonth || next <= finalMonth) ? cycleBill(r, next) : null;
+      if (bill?.cycle) {
+        const { start, end, dueDate } = bill.cycle;
+        candidates.push({ month: next, start, end, dueDate, balance: bill.due });
       }
     }
     for (const c of candidates) {
@@ -165,7 +176,7 @@ export function desiredNotifications(input: {
         type: "rent_due_soon",
         category: "reminder",
         title: `Rent due ${inDays(days)}: ${r.propertyName}`,
-        body: `${formatMoney(c.balance)} from ${r.tenantName} for ${formatMonth(c.month)} is due on ${formatDate(c.dueDate)}.`,
+        body: `${formatMoney(c.balance)} from ${r.tenantName} for ${formatCycle(c)} is due on ${formatDate(c.dueDate)}.`,
         link,
         period: c.month,
         ...refs,

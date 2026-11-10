@@ -68,7 +68,6 @@ export type RentalRow = {
   /** WiFi plans, oldest first (billed per person as a "wifi" charge item). */
   wifiPlans: WifiPlanRow[];
   deposit: number;
-  dueDay: number;
   status: "active" | "moved_out";
   /** Active, with a move-out date scheduled in the future. */
   movingOut: boolean;
@@ -131,6 +130,7 @@ export async function loadRentals(filter: Record<string, unknown> = {}, today = 
     const rentChanges = changesByRental.get(toId(r._id)) ?? [];
     const rentalCharges = chargesByRental.get(toId(r._id)) ?? [];
     const wifiPlans = wifiByRental.get(toId(r._id)) ?? [];
+    // Billing cycles: charges + WiFi are month-keyed (they apply to the cycle starting in that month).
     const terms = { ...r, rentChanges, charges: rentalCharges, wifiPlans };
     const schedule = rentSchedule(terms, paymentsByRental.get(toId(r._id)) ?? [], today);
     const status = rentalStatus(r, today);
@@ -151,7 +151,6 @@ export async function loadRentals(filter: Record<string, unknown> = {}, today = 
       charges: rentalCharges,
       wifiPlans,
       deposit: r.deposit,
-      dueDay: r.dueDay,
       status,
       movingOut: status === "active" && !!r.moveOutDate,
       schedule,

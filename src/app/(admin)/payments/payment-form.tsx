@@ -1,4 +1,5 @@
 import { ActionForm, Hidden, MoneyField, SelectField, SubmitButton, TextField } from "@/components/form";
+import { PaymentPeriodFields, type PeriodChoices } from "@/components/payment-period-fields";
 import { titleCase } from "@/lib/format";
 import { currencySymbol, toMajorString } from "@/lib/money";
 import { PAYMENT_METHODS, type ActionState } from "@/lib/validation";
@@ -7,6 +8,7 @@ export function PaymentForm({
   action,
   rentalId,
   rentals,
+  periods,
   defaults = {},
   returnTo,
   compact,
@@ -16,6 +18,8 @@ export function PaymentForm({
   rentalId?: string;
   /** … or a list to choose from. */
   rentals?: { value: string; label: string }[];
+  /** "For period" choices (billing cycles) per rental id; see paymentPeriodOptions. */
+  periods: Record<string, PeriodChoices>;
   defaults?: { rentalId?: string; forMonth?: string; amount?: number; paidOn?: string; method?: string };
   returnTo?: "rental";
   compact?: boolean;
@@ -25,17 +29,14 @@ export function PaymentForm({
       {rentalId && <Hidden name="rentalId" value={rentalId} />}
       {returnTo && <Hidden name="returnTo" value={returnTo} />}
       <div className={compact ? "grid grid-cols-1 gap-4" : "grid grid-cols-1 gap-5 sm:grid-cols-2"}>
-        {rentals && (
-          <SelectField
-            name="rentalId"
-            label="Rental"
-            placeholder="Select a rental…"
-            options={rentals}
-            defaultValue={defaults.rentalId}
-            className={compact ? undefined : "sm:col-span-2"}
-          />
-        )}
-        <TextField name="forMonth" label="For month" type="month" defaultValue={defaults.forMonth} placeholder="YYYY-MM" />
+        <PaymentPeriodFields
+          rentals={rentals}
+          rentalId={rentalId}
+          periods={periods}
+          defaultRentalId={defaults.rentalId}
+          defaultMonth={defaults.forMonth}
+          compact={compact}
+        />
         <MoneyField
           name="amount"
           label="Amount"

@@ -97,7 +97,15 @@ function ChargeFields({ defaultMonth, minMonth, maxMonth, lastReading, defaultRa
   return (
     <div className="grid grid-cols-1 gap-4">
       <div className="grid grid-cols-2 gap-4">
-        <TextField name="month" label="Month" type="month" defaultValue={defaultMonth} min={minMonth} max={maxMonth} />
+        <TextField
+          name="month"
+          label="Month"
+          type="month"
+          defaultValue={defaultMonth}
+          min={minMonth}
+          max={maxMonth}
+          hint="Added to the billing cycle that starts in this month."
+        />
         <TypeSelect value={type} onChange={setType} />
       </div>
       {isElectricity && (

@@ -5,7 +5,17 @@
  */
 import { formatDate } from "./format";
 import { formatMoneyShort } from "./money";
-import { addMonths, dueForMonth, formatMonth, monthOf, type ChargeLike, type RentChangeLike, type RentMonth, type WifiPlanLike } from "./rent";
+import {
+  addMonths,
+  cycleBill,
+  cycleMonthOn,
+  finalCycleMonth,
+  formatCycle,
+  type ChargeLike,
+  type RentChangeLike,
+  type RentMonth,
+  type WifiPlanLike,
+} from "./rent";
 
 export const DEFAULT_COUNTRY_CODE = (process.env.NEXT_PUBLIC_DEFAULT_COUNTRY_CODE || "91").replace(/\D/g, "") || "91";
 
@@ -70,9 +80,9 @@ export type ReminderKind = "overdue" | "due_soon";
 
 export type ReminderDue = {
   kind: ReminderKind;
-  /** Unpaid months included in the reminder, oldest first. */
-  months: { month: string; dueDate: string; balance: number }[];
-  /** Outstanding total across those months (minor units). */
+  /** Unpaid billing cycles included in the reminder (key month + period), oldest first. */
+  months: { month: string; start: string; end: string; dueDate: string; balance: number }[];
+  /** Outstanding total across those cycles (minor units). */
   amount: number;
   /** Earliest unpaid due date (YYYY-MM-DD). */
   dueDate: string;
@@ -80,20 +90,20 @@ export type ReminderDue = {
 
 export type ReminderRental = {
   status: "active" | "moved_out";
-  /** Original rent; with rentChanges/charges, next month's due is computed per month. */
+  /** Original rent; with rentChanges/charges, the next cycle's due is computed per cycle. */
   monthlyRent: number;
   rentChanges?: RentChangeLike[];
   charges?: ChargeLike[];
   wifiPlans?: WifiPlanLike[];
-  dueDay: number;
+  moveInDate: string;
   moveOutDate: string | null;
   schedule: RentMonth[];
 };
 
 /**
  * What a reminder should cover:
- * - "overdue": every past-due month with a balance (the outstanding past-due total);
- * - otherwise, for an active rental, "due_soon": the next upcoming unpaid month.
+ * - "overdue": every past-due billing cycle with a balance (the outstanding past-due total);
+ * - otherwise, for an active rental, "due_soon": the next upcoming unpaid cycle.
  * Returns null when there is nothing to remind about.
  */
 export function reminderDue(rental: ReminderRental, today: string): ReminderDue | null {
@@ -101,7 +111,7 @@ export function reminderDue(rental: ReminderRental, today: string): ReminderDue 
   if (overdue.length > 0) {
     return {
       kind: "overdue",
-      months: overdue.map((m) => ({ month: m.month, dueDate: m.dueDate, balance: m.balance })),
+      months: overdue.map((m) => ({ month: m.month, start: m.start, end: m.end, dueDate: m.dueDate, balance: m.balance })),
       amount: overdue.reduce((s, m) => s + m.balance, 0),
       dueDate: overdue[0].dueDate,
     };
@@ -112,20 +122,23 @@ export function reminderDue(rental: ReminderRental, today: string): ReminderDue 
   if (upcoming) {
     return {
       kind: "due_soon",
-      months: [{ month: upcoming.month, dueDate: upcoming.dueDate, balance: upcoming.balance }],
+      months: [{ month: upcoming.month, start: upcoming.start, end: upcoming.end, dueDate: upcoming.dueDate, balance: upcoming.balance }],
       amount: upcoming.balance,
       dueDate: upcoming.dueDate,
     };
   }
 
-  // Everything billed so far is paid: remind about the first month after the schedule
-  // (next month), unless the tenant is moving out before then.
+  // Everything billed so far is paid: remind about the first cycle after the schedule
+  // (the next cycle), unless the stay ends before then.
   const lastListed = rental.schedule[rental.schedule.length - 1].month;
-  const next = addMonths(lastListed > monthOf(today) ? lastListed : monthOf(today), 1);
-  if (rental.moveOutDate && next > monthOf(rental.moveOutDate)) return null;
-  const dueDate = `${next}-${String(rental.dueDay).padStart(2, "0")}`;
-  const amount = dueForMonth(rental, next);
-  return { kind: "due_soon", months: [{ month: next, dueDate, balance: amount }], amount, dueDate };
+  const current = cycleMonthOn(rental, today);
+  const next = addMonths(current && current > lastListed ? current : lastListed, 1);
+  const finalMonth = finalCycleMonth(rental);
+  if (finalMonth && next > finalMonth) return null;
+  const bill = cycleBill(rental, next);
+  if (!bill.cycle) return null;
+  const { start, end, dueDate } = bill.cycle;
+  return { kind: "due_soon", months: [{ month: next, start, end, dueDate, balance: bill.due }], amount: bill.due, dueDate };
 }
 
 export function reminderVars(due: ReminderDue, tenant: string, property: string, payLink = ""): ReminderVars {
@@ -133,7 +146,7 @@ export function reminderVars(due: ReminderDue, tenant: string, property: string,
     tenant,
     property,
     amount: formatMoneyShort(due.amount),
-    months: due.months.map((m) => formatMonth(m.month)).join(", "),
+    months: due.months.map((m) => formatCycle(m)).join(", "),
     dueDate: formatDate(due.dueDate),
     payLink,
   };

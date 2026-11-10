@@ -133,7 +133,8 @@ describe("signed pay links (matrix: Expired pay link)", () => {
 });
 
 describe("pay link amount is live (matrix: Pay link amount)", () => {
-  const rental = { moveInDate: "2026-06-01", moveOutDate: null, monthlyRent: 12_000_00, dueDay: 5 };
+  // Moved in 1 Jun: calendar-month cycles, each due on the 1st of the next month.
+  const rental = { moveInDate: "2026-06-01", moveOutDate: null, monthlyRent: 12_000_00 };
   const today = "2026-10-20";
 
   it("link made when 12,000 was due; 5,000 paid since -> 7,000", () => {
@@ -151,7 +152,16 @@ describe("pay link amount is live (matrix: Pay link amount)", () => {
       today,
     );
     const due = payDue({ ...rental, schedule: after }, "2026-10", today);
-    expect(due).toEqual({ months: [{ month: "2026-10", balance: 7_000_00 }], amount: 7_000_00 });
+    expect(due).toEqual({ months: [{ month: "2026-10", start: "2026-10-01", end: "2026-10-31", balance: 7_000_00 }], amount: 7_000_00 });
+    // Without `through`, a cycle that isn't due yet (Oct, due 1 Nov) is not asked for.
+    expect(payDue({ ...rental, schedule: after }, null, today).amount).toBe(0);
+  });
+
+  it("without `through`, asks for every cycle whose due date has arrived", () => {
+    const paid = ["2026-06", "2026-07", "2026-08"].map((m) => ({ forMonth: m, amount: 12_000_00 }));
+    const due = payDue({ ...rental, schedule: rentSchedule(rental, paid, today) }, null, today);
+    expect(due.months.map((m) => m.month)).toEqual(["2026-09"]);
+    expect(due.amount).toBe(12_000_00);
   });
 
   it("fully paid -> nothing due", () => {
@@ -163,7 +173,7 @@ describe("pay link amount is live (matrix: Pay link amount)", () => {
     const paid = ["2026-06", "2026-07", "2026-08", "2026-09", "2026-10"].map((m) => ({ forMonth: m, amount: 12_000_00 }));
     const terms = { ...rental, charges: [{ month: "2026-11", type: "electricity", amount: 1_200_00 }] };
     const due = payDue({ ...terms, schedule: rentSchedule(terms, paid, today) }, "2026-11", today);
-    expect(due).toEqual({ months: [{ month: "2026-11", balance: 13_200_00 }], amount: 13_200_00 });
+    expect(due).toEqual({ months: [{ month: "2026-11", start: "2026-11-01", end: "2026-11-30", balance: 13_200_00 }], amount: 13_200_00 });
     const paidNov = rentSchedule(terms, [...paid, { forMonth: "2026-11", amount: 13_200_00 }], today);
     expect(payDue({ ...terms, schedule: paidNov }, "2026-11", today).amount).toBe(0);
   });
@@ -178,7 +188,7 @@ describe("pay link amount is live (matrix: Pay link amount)", () => {
 describe("UPI (matrix: UPI not configured)", () => {
   const due = {
     kind: "overdue" as const,
-    months: [{ month: "2026-09", dueDate: "2026-09-05", balance: 15_000_00 }],
+    months: [{ month: "2026-08", start: "2026-08-05", end: "2026-09-04", dueDate: "2026-09-05", balance: 15_000_00 }],
     amount: 15_000_00,
     dueDate: "2026-09-05",
   };
@@ -207,9 +217,9 @@ describe("UPI (matrix: UPI not configured)", () => {
     const rental = {
       status: "active" as const,
       monthlyRent: 15_000_00,
-      dueDay: 5,
+      moveInDate: "2026-09-01",
       moveOutDate: null,
-      schedule: rentSchedule({ moveInDate: "2026-09-01", monthlyRent: 15_000_00, dueDay: 5 }, [], "2026-09-20"),
+      schedule: rentSchedule({ moveInDate: "2026-09-01", monthlyRent: 15_000_00 }, [], "2026-09-20"),
     };
     const base = { rental, tenantName: "Asha", tenantPhone: "9876543210", propertyName: "Palm Grove", template: DEFAULT_REMINDER_TEMPLATE_UPI, today: "2026-09-20" };
     const seen: string[] = [];
@@ -237,17 +247,21 @@ describe("UPI (matrix: UPI not configured)", () => {
 
 describe("receipt content", () => {
   const rental = {
+    moveInDate: "2026-08-20",
+    moveOutDate: null,
     monthlyRent: 10_000_00,
     rentChanges: [{ effectiveMonth: "2026-09", monthlyRent: 11_000_00 }],
     charges: [{ month: "2026-10", type: "electricity", amount: 1_200_00 }],
   };
 
-  it("breaks the month into rent + charges and tracks the balance after each payment", () => {
-    const p1 = { id: "a", forMonth: "2026-10", amount: 10_000_00, paidOn: "2026-10-03", createdAt: "2026-10-03T10:00:00.000Z" };
-    const p2 = { id: "b", forMonth: "2026-10", amount: 2_200_00, paidOn: "2026-10-10", createdAt: "2026-10-10T10:00:00.000Z" };
+  it("breaks the billing cycle into rent + charges and tracks the balance after each payment", () => {
+    const p1 = { id: "a", forMonth: "2026-10", amount: 10_000_00, paidOn: "2026-11-20", createdAt: "2026-11-20T10:00:00.000Z" };
+    const p2 = { id: "b", forMonth: "2026-10", amount: 2_200_00, paidOn: "2026-11-25", createdAt: "2026-11-25T10:00:00.000Z" };
     const b1 = receiptBreakdown(rental, p1, [p1, p2]);
     expect(b1).toEqual({
       month: "2026-10",
+      start: "2026-10-20",
+      end: "2026-11-19",
       rent: 11_000_00,
       chargeItems: [{ type: "electricity", amount: 1_200_00 }],
       monthDue: 12_200_00,
@@ -259,16 +273,24 @@ describe("receipt content", () => {
     expect(b2.balanceAfter).toBe(0);
   });
 
+  it("pro-rates the rent of a final cycle cut short by the move-out date (charges stay whole)", () => {
+    const leaving = { ...rental, moveOutDate: "2026-11-04" }; // cycle 20 Oct – 4 Nov: 16 of 31 days
+    const p = { id: "c", forMonth: "2026-10", amount: 1_000_00, paidOn: "2026-11-04" };
+    const b = receiptBreakdown(leaving, p, [p]);
+    expect(b).toMatchObject({ start: "2026-10-20", end: "2026-11-04", rent: 5_677_00, monthDue: 5_677_00 + 1_200_00 });
+  });
+
   it("public pages use the first name only", () => {
     expect(firstName("  Asha  Menon ")).toBe("Asha");
   });
 
   it("WhatsApp receipt message contains the /r/ link", () => {
     const msg = receiptMessage(
-      { receiptNo: "RNT/2026-27/0001", amount: 10_000_00, tenantName: "Asha Menon", propertyName: "Palm Grove", month: "2026-10" },
+      { receiptNo: "RNT/2026-27/0001", amount: 10_000_00, tenantName: "Asha Menon", propertyName: "Palm Grove", start: "2026-10-20", end: "2026-11-19" },
       "https://rentee.test/r/r.abc.def",
     );
     expect(msg).toContain("Hi Asha,");
+    expect(msg).toContain("(20 Oct – 19 Nov 2026)");
     expect(msg).toContain("RNT/2026-27/0001");
     expect(msg).toContain("https://rentee.test/r/r.abc.def");
     expect(msg).not.toContain("Menon");
@@ -301,7 +323,7 @@ describe("receipt content", () => {
       propertyName: "Palm Grove Villa",
       propertyAddress: "4 Palm Street, Kochi",
       note: null,
-      breakdown: { month: "2026-10", rent: 123_800_00, chargeItems: [{ type: "electricity", amount: 1_200_00 }], monthDue: 125_000_00, paidToDate: 125_000_00, balanceAfter: 0 },
+      breakdown: { month: "2026-10", start: "2026-10-01", end: "2026-10-31", rent: 123_800_00, chargeItems: [{ type: "electricity", amount: 1_200_00 }], monthDue: 125_000_00, paidToDate: 125_000_00, balanceAfter: 0 },
     };
     const pdf = await renderReceiptPdf(data);
     expect(Buffer.from(pdf.subarray(0, 5)).toString("latin1")).toBe("%PDF-");

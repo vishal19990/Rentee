@@ -45,7 +45,7 @@ const FEATURES = [
 
 const STEPS = [
   { n: "01", title: "Add your houses", text: "Enter each property once — address, rent, photos and electricity rate." },
-  { n: "02", title: "Move tenants in", text: "Create a rental with move-in date, rent, deposit and due day. Upload their documents." },
+  { n: "02", title: "Move tenants in", text: "Create a rental with move-in date, rent and deposit; rent is billed in cycles from the move-in day. Upload their documents." },
   { n: "03", title: "Collect & relax", text: "Rentee tracks every month, reminds tenants on WhatsApp and issues receipts when they pay." },
 ];
 

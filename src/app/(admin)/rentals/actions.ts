@@ -7,7 +7,7 @@ import { asObjectId, syncRentalStatuses } from "@/lib/data";
 import { connectDB } from "@/lib/db";
 import { syncNotificationsSafe } from "@/lib/notification-sync";
 import { dateFromISO } from "@/lib/format";
-import { localToday, monthOf, rentalStatus, toISODate } from "@/lib/rent";
+import { finalCycleMonth, localToday, monthOf, rentalStatus, toISODate } from "@/lib/rent";
 import { moveOutSchema, parseForm, rentalCreateSchema, rentalUpdateSchema, type ActionState } from "@/lib/validation";
 import { agreedDepositGuard, ensureDepositLedger } from "@/lib/deposit-store";
 import { linkConvertedRental } from "@/lib/enquiry-data";
@@ -97,17 +97,20 @@ export async function createRental(_prev: ActionState, fd: FormData): Promise<Ac
   redirect(`/rentals/${id}`);
 }
 
-/** Payments must stay inside the rental's months after a date change. */
+/** Key month of the last billing cycle for these dates (see finalCycleMonth). */
+const lastCycle = (moveInDate: string, moveOutDate: string) => finalCycleMonth({ moveInDate, moveOutDate })!;
+
+/** Payments must stay inside the rental's billing cycles after a date change. */
 async function paymentsOutside(rentalId: unknown, moveInDate: string, moveOutDate: string | null) {
   const or: Record<string, unknown>[] = [{ forMonth: { $lt: monthOf(moveInDate) } }];
-  if (moveOutDate) or.push({ forMonth: { $gt: monthOf(moveOutDate) } });
+  if (moveOutDate) or.push({ forMonth: { $gt: lastCycle(moveInDate, moveOutDate) } });
   return Payment.exists({ rental: rentalId, $or: or });
 }
 
-/** Charges must stay inside the rental's months too. */
+/** Charges must stay inside the rental's billing cycles too. */
 async function chargesOutside(rentalId: unknown, moveInDate: string, moveOutDate: string | null) {
   const or: Record<string, unknown>[] = [{ month: { $lt: monthOf(moveInDate) } }];
-  if (moveOutDate) or.push({ month: { $gt: monthOf(moveOutDate) } });
+  if (moveOutDate) or.push({ month: { $gt: lastCycle(moveInDate, moveOutDate) } });
   return Charge.exists({ rental: rentalId, $or: or });
 }
 
@@ -126,15 +129,15 @@ export async function updateRental(id: string, _prev: ActionState, fd: FormData)
   if (!rental) return NOT_FOUND;
 
   if (await paymentsOutside(_id, moveInDate, moveOutDate)) {
-    const msg = "Payments are recorded for months outside these dates";
-    const field = moveOutDate && (await Payment.exists({ rental: _id, forMonth: { $gt: monthOf(moveOutDate) } }))
+    const msg = "Payments are recorded for billing cycles outside these dates";
+    const field = moveOutDate && (await Payment.exists({ rental: _id, forMonth: { $gt: lastCycle(moveInDate, moveOutDate) } }))
       ? "moveOutDate"
       : "moveInDate";
     return { ok: false, message: msg, fieldErrors: { [field]: [msg] }, values };
   }
   if (await chargesOutside(_id, moveInDate, moveOutDate)) {
-    const msg = "Charges are recorded for months outside these dates. Remove them first.";
-    const field = moveOutDate && (await Charge.exists({ rental: _id, month: { $gt: monthOf(moveOutDate) } }))
+    const msg = "Charges are recorded for billing cycles outside these dates. Remove them first.";
+    const field = moveOutDate && (await Charge.exists({ rental: _id, month: { $gt: lastCycle(moveInDate, moveOutDate) } }))
       ? "moveOutDate"
       : "moveInDate";
     return { ok: false, message: msg, fieldErrors: { [field]: [msg] }, values };
@@ -197,12 +200,13 @@ export async function moveOutRental(id: string, _prev: ActionState, fd: FormData
   if (!parsed.success) return parsed.state;
   const { moveOutDate } = parsed.data;
 
-  if (await Payment.exists({ rental: _id, forMonth: { $gt: monthOf(moveOutDate) } })) {
-    const msg = "Payments are recorded for months after this date";
+  const finalCycle = lastCycle(toISODate(rental.moveInDate), moveOutDate);
+  if (await Payment.exists({ rental: _id, forMonth: { $gt: finalCycle } })) {
+    const msg = "Payments are recorded for billing cycles after this date";
     return { ok: false, fieldErrors: { moveOutDate: [msg] }, values: parsed.values };
   }
-  if (await Charge.exists({ rental: _id, month: { $gt: monthOf(moveOutDate) } })) {
-    const msg = "Charges are recorded for months after this date";
+  if (await Charge.exists({ rental: _id, month: { $gt: finalCycle } })) {
+    const msg = "Charges are recorded for billing cycles after this date";
     return { ok: false, fieldErrors: { moveOutDate: [msg] }, values: parsed.values };
   }
 

@@ -31,7 +31,7 @@ export default async function PaymentReceiptPage({ params }: { params: Promise<{
   const rental = payment ? await Rental.findById(payment.rental).select("tenant").lean() : null;
   const tenant = rental ? await Tenant.findById(rental.tenant).select("phone").lean() : null;
   const shareUrl = await receiptShareUrl(id);
-  const message = receiptMessage({ ...receipt, month: receipt.breakdown.month }, shareUrl);
+  const message = receiptMessage({ ...receipt, start: receipt.breakdown.start, end: receipt.breakdown.end }, shareUrl);
   const phone = normalizePhone(tenant?.phone);
   const landlordMissing = !receipt.landlord.name;
 

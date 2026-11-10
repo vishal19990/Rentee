@@ -25,7 +25,7 @@ const { Tenant } = await import("../src/models/Tenant");
 const { Rental } = await import("../src/models/Rental");
 const { Payment } = await import("../src/models/Payment");
 const { Maintenance } = await import("../src/models/Maintenance");
-const { addDays, addMonths, localToday, monthOf } = await import("../src/lib/rent");
+const { addDays, addMonths, finalCycleMonth, localToday, monthOf } = await import("../src/lib/rent");
 const { minorDigits } = await import("../src/lib/money");
 
 const args = process.argv.slice(2);
@@ -189,7 +189,6 @@ async function main() {
     moveInDate: d(palmIn),
     monthlyRent: money(55000),
     deposit: money(110000),
-    dueDay: 5,
   });
   await Payment.create({
     rental: palmRental._id,
@@ -210,7 +209,6 @@ async function main() {
     moveOutDate: d(addDays(today, 20)),
     monthlyRent: money(28000),
     deposit: money(56000),
-    dueDay: 1,
   });
   const lotusPayments = [];
   for (let i = 8; i >= 1; i--) {
@@ -244,11 +242,12 @@ async function main() {
     moveOutDate: d(cedarOut),
     monthlyRent: money(36000),
     deposit: money(72000),
-    dueDay: 10,
     status: "moved_out",
   });
   const cedarPayments = [];
-  for (let m = monthOf(cedarIn); m <= monthOf(cedarOut); m = addMonths(m, 1)) {
+  // One payment per billing cycle, through the final cycle (the one the move-out date ends).
+  const cedarLast = finalCycleMonth({ moveInDate: cedarIn, moveOutDate: cedarOut })!;
+  for (let m = monthOf(cedarIn); m <= cedarLast; m = addMonths(m, 1)) {
     cedarPayments.push({ rental: cedarRental._id, forMonth: m, amount: money(36000), paidOn: d(`${m}-08`), method: "cheque" });
   }
   await Payment.create(cedarPayments);
@@ -260,7 +259,6 @@ async function main() {
     moveInDate: d(today),
     monthlyRent: money(32000),
     deposit: money(64000),
-    dueDay: 28,
   });
 
   await Maintenance.create([

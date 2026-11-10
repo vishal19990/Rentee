@@ -18,8 +18,8 @@ const NOW = new Date("2026-10-05T12:00:00Z");
 function source(
   id: string,
   opts: {
-    moveInDate?: string;
-    dueDay?: number;
+    /** Move-in day in July 2026 (default 1): cycles run from it and are due on it the next month. */
+    day?: number;
     rent?: number;
     payments?: { forMonth: string; amount: number }[];
     url?: string | null;
@@ -30,10 +30,9 @@ function source(
   } = {},
 ): BulkSource {
   const r = {
-    moveInDate: opts.moveInDate ?? "2026-08-01",
+    moveInDate: `2026-07-${String(opts.day ?? 1).padStart(2, "0")}`,
     moveOutDate: opts.moveOutDate ?? null,
     monthlyRent: opts.rent ?? 1000000,
-    dueDay: opts.dueDay ?? 1,
   };
   return {
     rental: {
@@ -43,7 +42,7 @@ function source(
       propertyName: `Flat ${id}`,
       status: r.moveOutDate && r.moveOutDate <= TODAY ? "moved_out" : "active",
       monthlyRent: r.monthlyRent,
-      dueDay: r.dueDay,
+      moveInDate: r.moveInDate,
       moveOutDate: r.moveOutDate,
       schedule: rentSchedule(r, opts.payments ?? [], TODAY),
     },
@@ -63,20 +62,20 @@ describe("buildBulkItems", () => {
   it("lists overdue rentals first (oldest due first), then due soon (nearest first)", () => {
     const items = buildBulkItems(
       [
-        // due soon: Oct due on the 9th (4 days away), all earlier months paid
-        source("soon9", { dueDay: 9, payments: paid("2026-08", "2026-09") }),
-        // overdue Oct only (due the 1st)
-        source("oct", { payments: paid("2026-08", "2026-09") }),
-        // overdue Aug–Oct
+        // due soon: cycle 9 Sep – 8 Oct due on 9 Oct (4 days away), earlier cycles paid
+        source("soon9", { day: 9, payments: paid("2026-07", "2026-08") }),
+        // overdue: only the cycle due 1 Oct
+        source("oct", { payments: paid("2026-07", "2026-08") }),
+        // overdue: cycles due 1 Aug, 1 Sep and 1 Oct
         source("aug", {}),
-        // due soon: Oct due on the 7th
-        source("soon7", { dueDay: 7, payments: paid("2026-08", "2026-09") }),
+        // due soon: due on 7 Oct
+        source("soon7", { day: 7, payments: paid("2026-07", "2026-08") }),
       ],
       TODAY,
     );
     expect(items.map((i) => i.rentalId)).toEqual(["aug", "oct", "soon7", "soon9"]);
     expect(items[0]).toMatchObject({ kind: "overdue", amount: 3000000, dueDate: "2026-08-01", tenantId: "t-aug" });
-    expect(items[0].months).toContain("Aug 2026");
+    expect(items[0].months).toBe("1 Jul – 31 Jul 2026, 1 Aug – 31 Aug 2026, 1 Sept – 30 Sept 2026");
     expect(items[2]).toMatchObject({ kind: "due_soon", amount: 1000000, dueDate: "2026-10-07" });
   });
 
@@ -91,9 +90,9 @@ describe("buildBulkItems", () => {
   it("leaves out fully paid rentals whose next due date is more than 7 days away", () => {
     const items = buildBulkItems(
       [
-        source("paidUp", { payments: paid("2026-08", "2026-09", "2026-10") }), // next due 5 Nov
-        source("soon12", { dueDay: 12, payments: paid("2026-08", "2026-09") }), // 7 days: included
-        source("soon13", { dueDay: 13, payments: paid("2026-08", "2026-09") }), // 8 days: excluded
+        source("paidUp", { payments: paid("2026-07", "2026-08", "2026-09") }), // running cycle due 1 Nov
+        source("soon12", { day: 12, payments: paid("2026-07", "2026-08") }), // due 12 Oct, 7 days: included
+        source("soon13", { day: 13, payments: paid("2026-07", "2026-08") }), // due 13 Oct, 8 days: excluded
       ],
       TODAY,
     );
@@ -107,7 +106,8 @@ describe("buildBulkItems", () => {
   });
 
   it("includes a moved-out rental that still owes rent", () => {
-    const items = buildBulkItems([source("gone", { moveOutDate: "2026-09-20", payments: paid("2026-08") })], TODAY);
+    // Moved out 31 Aug (end of the cycle 1–31 Aug, due that day); only July's cycle paid.
+    const items = buildBulkItems([source("gone", { moveOutDate: "2026-08-31", payments: paid("2026-07") })], TODAY);
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({ kind: "overdue", amount: 1000000 });
   });
@@ -118,7 +118,7 @@ describe("filters", () => {
     [
       source("a", { lastRemindedAt: "2026-10-04T10:00:00Z" }), // overdue, reminded yesterday
       source("b", { lastRemindedAt: "2026-09-20T10:00:00Z" }), // overdue, reminded 15 days ago
-      source("c", { dueDay: 8, payments: paid("2026-08", "2026-09") }), // due soon, never reminded
+      source("c", { day: 8, payments: paid("2026-07", "2026-08") }), // due soon (8 Oct), never reminded
     ],
     TODAY,
   );
@@ -143,7 +143,7 @@ describe("filters", () => {
 
 describe("selection and queue", () => {
   const items: BulkReminderItem[] = buildBulkItems(
-    [source("a", {}), source("b", { url: null }), source("c", { payments: paid("2026-08") })],
+    [source("a", {}), source("b", { url: null }), source("c", { payments: paid("2026-07") })],
     TODAY,
   );
 

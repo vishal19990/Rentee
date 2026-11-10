@@ -11,13 +11,13 @@ import { collectionsXlsx, fySummaryXlsx, ledgerXlsx } from "./reports-xlsx";
 import { rentSchedule, type RentalLike } from "./rent";
 
 const R = (rupees: number) => rupees * 100;
-const TODAY = "2026-10-20";
+const TODAY = "2026-11-02";
 
-// Rent 10,000 from Jun 2026, raised to 11,000 from Sep; Oct electricity 1,200; Oct paid 10,000.
+// Moved in 1 Jun 2026 (calendar-month cycles, each due on the 1st of the next month).
+// Rent 10,000, raised to 11,000 from the Sep cycle; Oct electricity 1,200; Oct paid 10,000.
 const rentalA: RentalLike = {
   moveInDate: "2026-06-01",
   monthlyRent: R(10000),
-  dueDay: 5,
   rentChanges: [{ effectiveMonth: "2026-09", monthlyRent: R(11000) }],
   charges: [{ month: "2026-10", type: "electricity", amount: R(1200) }],
 };
@@ -30,7 +30,8 @@ const paymentsA = [
 ];
 const scheduleA = rentSchedule(rentalA, paymentsA, TODAY);
 
-const rentalB: RentalLike = { moveInDate: "2026-09-15", monthlyRent: R(8000), dueDay: 20 };
+// Moved in 15 Sep: cycles 15 Sep – 14 Oct (due 15 Oct), 15 Oct – 14 Nov (due 15 Nov).
+const rentalB: RentalLike = { moveInDate: "2026-09-15", monthlyRent: R(8000) };
 const scheduleB = rentSchedule(rentalB, [], TODAY);
 
 const rentals: ScheduledRental[] = [
@@ -39,29 +40,32 @@ const rentals: ScheduledRental[] = [
 ];
 
 describe("collectionsReport", () => {
-  it("sorts by balance (largest first) and totals the month", () => {
-    const r = collectionsReport("2026-10", rentals, [
-      { paidOn: "2026-10-03", amount: R(10000) },
-      { paidOn: "2026-09-30", amount: R(11000) },
+  it("lists the cycles due in the month, sorted by balance (largest first), and totals them", () => {
+    // November: A's cycle 1–31 Oct (due 1 Nov) and B's cycle 15 Oct – 14 Nov (due 15 Nov).
+    const r = collectionsReport("2026-11", rentals, [
+      { paidOn: "2026-11-01", amount: R(10000) },
+      { paidOn: "2026-10-30", amount: R(11000) },
     ]);
     const [first, second] = r.rows;
-    expect(first).toMatchObject({ rentalId: "b", due: R(8000), paid: 0, balance: R(8000), status: "upcoming" });
-    expect(second).toMatchObject({ rentalId: "a", rent: R(11000), charges: R(1200), due: R(12200), paid: R(10000), balance: R(2200), status: "partial" });
-    expect(r.totals).toEqual({ rent: R(19000), charges: R(1200), due: R(20200), paid: R(10000), balance: R(10200) });
-    expect(r.received).toBe(R(10000)); // only cash dated in October
+    expect(first).toMatchObject({ rentalId: "b", cycleMonth: "2026-10", start: "2026-10-15", end: "2026-11-14", dueDate: "2026-11-15", due: R(8000), paid: 0, balance: R(8000), status: "upcoming" });
+    expect(second).toMatchObject({ rentalId: "a", cycleMonth: "2026-10", dueDate: "2026-11-01", rent: R(11000), charges: R(1200), due: R(12200), paid: R(10000), balance: R(2200), status: "partial" });
+    expect(r.totals).toMatchObject({ rent: R(19000), charges: R(1200), due: R(20200), paid: R(10000), balance: R(10200) });
+    expect(r.received).toBe(R(10000)); // only cash dated in November
   });
 
-  it("excludes rentals not occupying the month", () => {
-    const r = collectionsReport("2026-07", rentals);
+  it("excludes rentals with no cycle due in the month", () => {
+    // August: only A's cycle 1–31 Jul (due 1 Aug); B moved in later.
+    const r = collectionsReport("2026-08", rentals);
     expect(r.rows.map((x) => x.rentalId)).toEqual(["a"]);
-    expect(r.rows[0]).toMatchObject({ rent: R(10000), due: R(10000), status: "paid" });
+    expect(r.rows[0]).toMatchObject({ cycleMonth: "2026-07", rent: R(10000), due: R(10000), status: "paid" });
   });
 
   it("gives 12 FY months, April first, with zeros where nothing was due", () => {
     const months = collectionsByMonth("2026-27", rentals, []);
     expect(months).toHaveLength(12);
     expect(months[0]).toMatchObject({ month: "2026-04", due: 0, rentals: 0 });
-    expect(months.find((m) => m.month === "2026-09")).toMatchObject({ due: R(11000 + 8000), paid: R(11000), rentals: 2 });
+    // October collects A's Sep cycle (due 1 Oct) and B's first cycle (due 15 Oct).
+    expect(months.find((m) => m.month === "2026-10")).toMatchObject({ due: R(11000 + 8000), paid: R(11000), rentals: 2 });
     expect(months[11].month).toBe("2027-03");
   });
 });
@@ -87,21 +91,28 @@ describe("tenantLedger", () => {
       ["2026-08", R(10000), 0, R(10000), R(10000), 0, 0],
       ["2026-09", R(11000), 0, R(11000), R(11000), 0, 0],
       ["2026-10", R(11000), R(1200), R(12200), R(10000), R(2200), R(2200)],
+      // The running cycle (1–30 Nov, due 1 Dec): billed, not yet overdue.
+      ["2026-11", R(11000), 0, R(11000), 0, R(11000), R(13200)],
     ]);
     expect(ledger.months[4].chargeItems).toEqual([{ type: "electricity", label: "Electricity", amount: R(1200) }]);
-    expect(ledger.months[4].status).toBe("partial");
-    expect(ledger.totals).toMatchObject({ rent: R(52000), charges: R(1200), due: R(53200), paid: R(51000), outstanding: R(2200), overdue: R(2200) });
+    expect(ledger.months[4]).toMatchObject({ start: "2026-10-01", end: "2026-10-31", dueDate: "2026-11-01", status: "partial" });
+    expect(ledger.months[5].status).toBe("upcoming");
+    expect(ledger.totals).toMatchObject({ rent: R(63000), charges: R(1200), due: R(64200), paid: R(51000), outstanding: R(13200), overdue: R(2200) });
   });
 
   it("shows an overpayment as a negative running outstanding", () => {
-    const s = rentSchedule({ moveInDate: "2026-09-01", monthlyRent: R(5000), dueDay: 5 }, [{ forMonth: "2026-09", amount: R(10000) }], TODAY);
+    const s = rentSchedule({ moveInDate: "2026-09-01", monthlyRent: R(5000) }, [{ forMonth: "2026-09", amount: R(10000) }], TODAY);
     const l = tenantLedger(s, [], []);
-    expect(l.months.map((m) => m.outstanding)).toEqual([-R(5000), 0]); // Oct unpaid uses up the credit
-    expect(l.totals.outstanding).toBe(0);
+    // Oct (unpaid) uses up the credit; Nov (running) is still owed.
+    expect(l.months.map((m) => m.outstanding)).toEqual([-R(5000), 0, R(5000)]);
+    expect(l.totals.outstanding).toBe(R(5000));
   });
 
   it("orders payments and deposit entries by date and tracks the held deposit", () => {
-    expect(ledger.payments.map((p) => p.paidOn)).toEqual(["2026-06-02", "2026-10-03"]);
+    expect(ledger.payments.map((p) => [p.paidOn, p.start, p.end])).toEqual([
+      ["2026-06-02", "2026-06-01", "2026-06-30"],
+      ["2026-10-03", "2026-10-01", "2026-10-31"],
+    ]);
     expect(ledger.deposit.map((d) => [d.label, d.held])).toEqual([
       ["Received", R(20000)],
       ["Refund", R(15000)], // same-day entries keep their recorded order
@@ -190,7 +201,7 @@ describe("export files", () => {
   it("ledger workbook has Rent, Payments and Deposit sheets with amounts in rupees", async () => {
     const wb = await readXlsx(await ledgerXlsx(heading, ledger));
     expect(wb.worksheets.map((w) => w.name)).toEqual(["Rent", "Payments", "Deposit"]);
-    const oct = findRow(wb.getWorksheet("Rent")!, "Oct 2026")!;
+    const oct = findRow(wb.getWorksheet("Rent")!, "1 Oct – 31 Oct 2026")!;
     expect(oct.getCell(5).value).toBe("Electricity 1200");
     expect(oct.getCell(6).value).toBe(12200); // due
     expect(oct.getCell(6).numFmt).toContain("#,##0.00");
@@ -199,9 +210,10 @@ describe("export files", () => {
 
   it("collections and FY workbooks", async () => {
     const months = collectionsByMonth("2026-27", rentals);
-    const c = await readXlsx(await collectionsXlsx({ report: collectionsReport("2026-10", rentals), byMonth: months, fy: "2026-27" }));
-    expect(c.worksheets.map((w) => w.name)).toEqual(["Oct 2026", "FY 2026-27 by month"]);
-    expect(findRow(c.worksheets[0], "Total")!.getCell(6).value).toBe(20200);
+    const c = await readXlsx(await collectionsXlsx({ report: collectionsReport("2026-11", rentals), byMonth: months, fy: "2026-27" }));
+    expect(c.worksheets.map((w) => w.name)).toEqual(["Nov 2026", "FY 2026-27 by month"]);
+    expect(findRow(c.worksheets[0], "Green Villa")!.getCell(3).value).toBe("1 Oct – 31 Oct 2026"); // period
+    expect(findRow(c.worksheets[0], "Total")!.getCell(7).value).toBe(20200); // due
     const f = await readXlsx(await fySummaryXlsx(summary));
     expect(findRow(f.getWorksheet("By property")!, "Green Villa")!.getCell(4).value).toBe(90000);
   });
@@ -215,7 +227,7 @@ describe("export files", () => {
   });
 
   it("long ledgers flow onto more pages", async () => {
-    const long = rentSchedule({ moveInDate: "2020-01-01", monthlyRent: R(5000), dueDay: 5 }, [], TODAY);
+    const long = rentSchedule({ moveInDate: "2020-01-01", monthlyRent: R(5000) }, [], TODAY);
     const doc = await PDFDocument.load(await ledgerPdf(heading, tenantLedger(long, [], [])));
     expect(doc.getPageCount()).toBeGreaterThan(1);
   });

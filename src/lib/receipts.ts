@@ -5,7 +5,7 @@
 import { z } from "zod";
 import { fyOf } from "./fy";
 import { formatMoneyShort } from "./money";
-import { chargesForMonth, formatMonth, rentForMonth, type ChargeItem, type ChargeLike, type RentChangeLike, type WifiPlanLike } from "./rent";
+import { addDays, addMonths, cycleBill, formatCycle, type ChargeItem, type RentalLike } from "./rent";
 
 export const RECEIPT_PREFIX = "RNT";
 
@@ -45,43 +45,42 @@ export function paymentMethodLabel(method: string): string {
 export type ReceiptPaymentLike = { id: string; forMonth: string; amount: number; paidOn: string; createdAt?: string };
 
 export type ReceiptBreakdown = {
+  /** Billing cycle key (YYYY-MM) the payment is for. */
   month: string;
+  /** The cycle's period (YYYY-MM-DD); see formatCycle. */
+  start: string;
+  end: string;
   rent: number;
   chargeItems: ChargeItem[];
-  /** Rent + charges for the month. */
+  /** Rent + charges (incl. WiFi) for the cycle. */
   monthDue: number;
-  /** Paid towards the month up to and including this payment. */
+  /** Paid towards the cycle up to and including this payment. */
   paidToDate: number;
-  /** Still due for the month after this payment. */
+  /** Still due for the cycle after this payment. */
   balanceAfter: number;
 };
 
 /**
- * The month a payment is for, broken down into rent and charges, and what was paid towards it
- * up to and including this payment (payments ordered by date paid, then creation).
+ * The billing cycle a payment is for, broken down into rent and charges, and what was paid
+ * towards it up to and including this payment (payments ordered by date paid, then creation).
  */
 export function receiptBreakdown(
-  rental: {
-    monthlyRent: number;
-    rentChanges?: RentChangeLike[];
-    charges?: ChargeLike[];
-    wifiPlans?: WifiPlanLike[];
-    moveInDate?: Date | string | null;
-    moveOutDate?: Date | string | null;
-  },
+  rental: RentalLike,
   payment: ReceiptPaymentLike,
   monthPayments: ReceiptPaymentLike[],
 ): ReceiptBreakdown {
   const month = payment.forMonth;
-  const rent = rentForMonth(rental, month);
-  const charges = chargesForMonth(rental, month);
+  const bill = cycleBill(rental, month);
+  // A payment outside the stay (legacy data) still gets a receipt: label it with the calendar month.
+  const start = bill.cycle?.start ?? `${month}-01`;
+  const end = bill.cycle?.end ?? addDays(`${addMonths(month, 1)}-01`, -1);
   const key = (p: ReceiptPaymentLike) => `${p.paidOn}|${p.createdAt ?? ""}|${p.id}`;
   const mine = key(payment);
   let paidToDate = 0;
   for (const p of monthPayments) if (p.forMonth === month && p.id !== payment.id && key(p) < mine) paidToDate += p.amount;
   paidToDate += payment.amount;
-  const monthDue = rent + charges.total;
-  return { month, rent, chargeItems: charges.items, monthDue, paidToDate, balanceAfter: Math.max(monthDue - paidToDate, 0) };
+  const monthDue = bill.due;
+  return { month, start, end, rent: bill.rent, chargeItems: bill.chargeItems, monthDue, paidToDate, balanceAfter: Math.max(monthDue - paidToDate, 0) };
 }
 
 export type LandlordDetails = { name: string; address: string; phone: string; pan: string };
@@ -103,10 +102,13 @@ export type ReceiptData = {
 };
 
 /** Message for "Send receipt on WhatsApp". */
-export function receiptMessage(r: Pick<ReceiptData, "receiptNo" | "amount" | "tenantName" | "propertyName"> & { month: string }, link: string): string {
+export function receiptMessage(
+  r: Pick<ReceiptData, "receiptNo" | "amount" | "tenantName" | "propertyName"> & { start: string; end: string },
+  link: string,
+): string {
   return (
     `Hi ${firstName(r.tenantName)}, thank you for your payment of ${formatMoneyShort(r.amount)} for ${r.propertyName} ` +
-    `(${formatMonth(r.month)}). Your rent receipt ${r.receiptNo}: ${link}`
+    `(${formatCycle(r)}). Your rent receipt ${r.receiptNo}: ${link}`
   );
 }
 

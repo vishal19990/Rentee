@@ -1,7 +1,7 @@
 import type { SVGProps } from "react";
 import { formatMoney, formatMoneyShort } from "@/lib/money";
 import { OCCUPANT_RELATION_LABELS } from "@/lib/occupants";
-import { addMonths, formatMonth, localToday, monthOf, payableMonths } from "@/lib/rent";
+import { addMonths, cycleMonthOn, finalCycleMonth, formatMonth, localToday, monthOf, payableMonths } from "@/lib/rent";
 import { activePlan, latestPlan, peopleLabel, personField, wifiPlanAmount, type WifiPlanRow } from "@/lib/wifi";
 import { getWifiRate } from "@/lib/wifi-store";
 import { ActionForm, ConfirmAction, Hidden, SubmitButton, TextField } from "@/components/form";
@@ -41,21 +41,21 @@ export async function WifiCard({
     moveInDate: string;
     moveOutDate: string | null;
     monthlyRent: number;
-    dueDay: number;
     status: "active" | "moved_out";
     wifiPlans: WifiPlanRow[];
   };
   occupants: OccupantRow[];
 }) {
   const today = localToday();
-  const thisMonth = monthOf(today);
+  // WiFi months are billing-cycle keys (a month's WiFi is billed with the cycle starting in it).
+  const thisMonth = cycleMonthOn(rental, today) ?? monthOf(today);
   const rate = await getWifiRate();
   const plans = rental.wifiPlans;
   const current = activePlan(plans, thisMonth);
   const latest = latestPlan(plans);
   const history = [...plans].filter((p) => p.id !== current?.id).reverse();
   const { first, last } = payableMonths(rental, today);
-  const lastMonth = rental.moveOutDate ? monthOf(rental.moveOutDate) : null;
+  const lastMonth = finalCycleMonth(rental);
   const canEdit = rental.status === "active";
 
   const options: WifiPersonOption[] = [

@@ -413,6 +413,14 @@ async function main() {
     check("get_tenant has no idNumber / documents / photo", tenant && !("idNumber" in tenant) && !("documents" in tenant) && !("photo" in tenant) && !JSON.stringify(tenant).includes("idNumber"));
     const before = toolJson(await callTool(access, "get_rental", { rentalId: rental.id }));
     check("get_rental returns schedule + deposit", Array.isArray(before?.schedule) && !!before?.deposit);
+    // Billing cycles run from the move-in day and are due at their end (the next anniversary).
+    check(
+      "get_rental schedule is by billing cycle (period, due at cycle end)",
+      before.schedule.length > 0 &&
+        before.schedule.every((m) => typeof m.period === "string" && m.start.slice(0, 7) === m.month && m.end >= m.start && m.dueDate > m.start),
+      JSON.stringify(before.schedule[0]),
+    );
+    // Payments are keyed by the cycle's start month; the current calendar month's cycle is payable.
     const month = new Date().toISOString().slice(0, 7);
     const zero = await callTool(access, "record_rent_payment", { rentalId: rental.id, forMonth: month, amount: 0 });
     check("amount 0 -> tool error", zero.json?.result?.isError === true && /greater than zero/.test(toolText(zero)), toolText(zero));

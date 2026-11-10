@@ -15,12 +15,14 @@ import {
 
 const TODAY = "2026-09-29";
 
-function rentalWith(over: Partial<{ moveInDate: string; moveOutDate: string | null; monthlyRent: number; dueDay: number }> = {}, payments: { forMonth: string; amount: number }[] = [], today = TODAY): ReminderRental {
-  const r = { moveInDate: "2026-08-01", moveOutDate: null as string | null, monthlyRent: 1500000, dueDay: 5, ...over };
+// Default: moved in 5 Jul 2026 -> cycles 5th–4th, each due on the 5th of the next month
+// (cycle 2026-07 = 5 Jul – 4 Aug, due 5 Aug; 2026-08 due 5 Sep; 2026-09 due 5 Oct).
+function rentalWith(over: Partial<{ moveInDate: string; moveOutDate: string | null; monthlyRent: number }> = {}, payments: { forMonth: string; amount: number }[] = [], today = TODAY): ReminderRental {
+  const r = { moveInDate: "2026-07-05", moveOutDate: null as string | null, monthlyRent: 1500000, ...over };
   return {
     status: r.moveOutDate && r.moveOutDate <= today ? "moved_out" : "active",
     monthlyRent: r.monthlyRent,
-    dueDay: r.dueDay,
+    moveInDate: r.moveInDate,
     moveOutDate: r.moveOutDate,
     schedule: rentSchedule(r, payments, today),
   };
@@ -66,9 +68,9 @@ describe("templating", () => {
 });
 
 describe("buildReminder", () => {
-  it("I/O matrix: phone '98765 43210', ₹15,000 overdue for Aug 2026", () => {
-    // Moved in Aug 2026, August paid 0, September paid in full -> only Aug overdue (₹15,000).
-    const rental = rentalWith({}, [{ forMonth: "2026-09", amount: 1500000 }]);
+  it("I/O matrix: phone '98765 43210', ₹15,000 overdue for the cycle 5 Jul – 4 Aug 2026", () => {
+    // Cycle 5 Jul – 4 Aug unpaid (due 5 Aug), cycle 5 Aug – 4 Sep paid -> only the first is overdue (₹15,000).
+    const rental = rentalWith({}, [{ forMonth: "2026-08", amount: 1500000 }]);
     const r = buildReminder({
       rental,
       tenantName: "Asha Menon",
@@ -85,8 +87,7 @@ describe("buildReminder", () => {
     expect(text).toContain("Palm Grove Villa");
     expect(text).toContain("₹15,000");
     expect(text).not.toContain("₹15,000.00");
-    expect(text).toContain("Aug 2026");
-    expect(text).toContain("5 Aug 2026");
+    expect(text).toContain("for 5 Jul – 4 Aug 2026 (due 5 Aug 2026)");
   });
 
   it("I/O matrix: international phone is used without the default code", () => {
@@ -114,42 +115,48 @@ describe("buildReminder", () => {
 
   it("lists every overdue month and the outstanding total", () => {
     const r = buildReminder({
-      rental: rentalWith({ moveInDate: "2026-07-01" }, [{ forMonth: "2026-07", amount: 500000 }]),
+      rental: rentalWith({ moveInDate: "2026-06-05" }, [{ forMonth: "2026-06", amount: 500000 }]),
       tenantName: "A",
       tenantPhone: "9876543210",
       propertyName: "P",
       template: "{amount} | {months} | {dueDate}",
       today: TODAY,
     })!;
-    // Jul balance 10,000 + Aug 15,000 + Sep 15,000
-    expect(r.message).toBe("₹40,000 | Jul 2026, Aug 2026, Sept 2026 | 5 Jul 2026");
+    // Cycles due 5 Jul (balance 10,000), 5 Aug (15,000) and 5 Sep (15,000); the running cycle isn't included.
+    expect(r.message).toBe("₹40,000 | 5 Jun – 4 Jul 2026, 5 Jul – 4 Aug 2026, 5 Aug – 4 Sept 2026 | 5 Jul 2026");
   });
 });
 
 describe("reminderDue", () => {
-  it("offers a 'due soon' reminder for the upcoming month when nothing is past due", () => {
-    const due = reminderDue(rentalWith({ moveInDate: "2026-09-01", dueDay: 28 }, [], "2026-09-20"), "2026-09-20")!;
+  it("offers a 'due soon' reminder for the running cycle (due at its end) when nothing is past due", () => {
+    // Moved in 28 Aug: cycle 28 Aug – 27 Sep is due on 28 Sep.
+    const due = reminderDue(rentalWith({ moveInDate: "2026-08-28" }, [], "2026-09-20"), "2026-09-20")!;
     expect(due).toMatchObject({ kind: "due_soon", amount: 1500000, dueDate: "2026-09-28" });
+    expect(due.months).toEqual([{ month: "2026-08", start: "2026-08-28", end: "2026-09-27", dueDate: "2026-09-28", balance: 1500000 }]);
   });
 
-  it("offers next month as 'due soon' when everything so far is paid", () => {
-    const due = reminderDue(rentalWith({}, [{ forMonth: "2026-08", amount: 1500000 }, { forMonth: "2026-09", amount: 1500000 }]), TODAY)!;
-    expect(due).toMatchObject({ kind: "due_soon", dueDate: "2026-10-05" });
-    expect(due.months.map((m) => m.month)).toEqual(["2026-10"]);
+  it("offers the next cycle as 'due soon' when everything so far is paid", () => {
+    const paid = ["2026-07", "2026-08", "2026-09"].map((forMonth) => ({ forMonth, amount: 1500000 }));
+    const due = reminderDue(rentalWith({}, paid), TODAY)!;
+    // Next cycle 5 Oct – 4 Nov, due 5 Nov.
+    expect(due).toMatchObject({ kind: "due_soon", dueDate: "2026-11-05" });
+    expect(due.months.map((m) => [m.month, m.start, m.end])).toEqual([["2026-10", "2026-10-05", "2026-11-04"]]);
   });
 
-  it("has nothing to remind about when moving out before the next month", () => {
-    const paid = [{ forMonth: "2026-08", amount: 1500000 }, { forMonth: "2026-09", amount: 1500000 }];
-    expect(reminderDue(rentalWith({ moveOutDate: "2026-09-30" }, paid), TODAY)).toBeNull();
+  it("has nothing to remind about when the stay ends before the next cycle", () => {
+    const paid = ["2026-07", "2026-08", "2026-09"].map((forMonth) => ({ forMonth, amount: 1500000 }));
+    expect(reminderDue(rentalWith({ moveOutDate: "2026-10-04" }, paid), TODAY)).toBeNull();
   });
 
   it("still reminds a moved-out tenant about arrears, but never 'due soon'", () => {
-    const moved = rentalWith({ moveOutDate: "2026-09-10" }, [{ forMonth: "2026-08", amount: 1500000 }]);
+    // Moved out 10 Sep: the final cycle 5–10 Sep is pro-rated (6/30 × 15,000 = 3,000), due 10 Sep.
+    const moved = rentalWith({ moveOutDate: "2026-09-10" }, [{ forMonth: "2026-07", amount: 1500000 }]);
     expect(moved.status).toBe("moved_out");
-    expect(reminderDue(moved, TODAY)).toMatchObject({ kind: "overdue", amount: 1500000 });
+    expect(reminderDue(moved, TODAY)).toMatchObject({ kind: "overdue", amount: 1500000 + 300000 });
     const settled = rentalWith({ moveOutDate: "2026-09-10" }, [
+      { forMonth: "2026-07", amount: 1500000 },
       { forMonth: "2026-08", amount: 1500000 },
-      { forMonth: "2026-09", amount: 1500000 },
+      { forMonth: "2026-09", amount: 300000 },
     ]);
     expect(reminderDue(settled, TODAY)).toBeNull();
   });

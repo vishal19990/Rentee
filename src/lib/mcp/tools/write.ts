@@ -13,7 +13,7 @@ import { syncNotificationsSafe } from "../../notification-sync";
 import { SCOPE_WRITE, hasScope } from "../../oauth/core";
 import { auditWrite } from "../../oauth/store";
 import { recordPayment } from "../../payment-store";
-import { formatMonth, localToday, toISODate } from "../../rent";
+import { localToday, toISODate } from "../../rent";
 import {
   MAINTENANCE_PRIORITIES,
   MAINTENANCE_STATUSES,
@@ -60,10 +60,10 @@ export function registerWriteTools(server: McpServer, run: (fn: () => Promise<Re
     {
       title: "Record rent payment",
       description:
-        "Records a rent payment for a rental and month (the same rules as the app: the month must be between the move-in month and the move-out month, or up to 12 months ahead while the rental is open-ended). Payments can't be deleted, so confirm the details first. Requires rentee:write.",
+        "Records a rent payment for a rental and billing cycle. Rent is billed in monthly cycles from the move-in day and due at each cycle's end (moved in 20 Oct: cycle 20 Oct – 19 Nov, due 20 Nov); a cycle is identified by the month it starts in (YYYY-MM, see get_rental's schedule). Same rules as the app: the cycle must be between the move-in cycle and the move-out cycle, or up to 12 months ahead while the rental is open-ended. Payments can't be deleted, so confirm the details first. Requires rentee:write.",
       inputSchema: {
         rentalId: id("Rental"),
-        forMonth: z.string().describe("Rent month the payment is for, YYYY-MM"),
+        forMonth: z.string().describe("Billing cycle the payment is for: the month the cycle starts in, YYYY-MM"),
         amount: amount("Amount paid"),
         paidOn: z.string().optional().describe("Date paid, YYYY-MM-DD (default today)"),
         method: z.enum(PAYMENT_METHODS).optional().describe("Default cash"),
@@ -92,7 +92,7 @@ export function registerWriteTools(server: McpServer, run: (fn: () => Promise<Re
           paymentId: res.paymentId,
           rentalId: parsed.data.rentalId,
           forMonth: parsed.data.forMonth,
-          month: formatMonth(parsed.data.forMonth),
+          period: res.period,
           amount: money(parsed.data.amount),
           paidOn: parsed.data.paidOn,
           method: parsed.data.method,

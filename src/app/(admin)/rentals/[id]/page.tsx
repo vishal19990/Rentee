@@ -11,7 +11,22 @@ import { loadDeposit } from "@/lib/deposit-store";
 import { currencySymbol, formatMoney, toMajorString } from "@/lib/money";
 import { paymentMethodLabel } from "@/lib/receipts";
 import { normalizePhone, whatsappUrl } from "@/lib/whatsapp";
-import { addDays, addMonths, formatMonth, localToday, monthOf, payableMonths, rentalBadge } from "@/lib/rent";
+import {
+  addDays,
+  addMonths,
+  cycleFor,
+  cycleMonthOn,
+  finalCycleMonth,
+  formatCycle,
+  formatCycleMonth,
+  formatMonth,
+  localToday,
+  monthOf,
+  payableMonths,
+  paymentPeriodOptions,
+  rentForMonth,
+  rentalBadge,
+} from "@/lib/rent";
 import { reminderButtons } from "@/lib/reminders";
 import { getDefaultElectricityRate } from "@/lib/settings";
 import { Charge } from "@/models/Charge";
@@ -91,10 +106,12 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
   const tenantPhone = normalizePhone(r.tenantPhone);
   const symbol = currencySymbol();
 
-  // Rent changes: the original rent from move-in, then each change. Default: next month.
+  // Rent changes: the original rent from move-in, then each change (keyed by the month its first
+  // billing cycle starts in). Default: the next cycle.
   const firstMonth = monthOf(r.moveInDate);
-  const moveOutMonth = r.moveOutDate ? monthOf(r.moveOutDate) : null;
-  const nextMonth = addMonths(monthOf(today), 1);
+  const moveOutMonth = finalCycleMonth(r);
+  const thisMonth = cycleMonthOn(r, today) ?? firstMonth;
+  const nextMonth = addMonths(thisMonth, 1);
   const defaultEffective =
     moveOutMonth && nextMonth > moveOutMonth ? moveOutMonth : nextMonth < firstMonth ? firstMonth : nextMonth;
 
@@ -102,16 +119,22 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
   const chargeBounds = payableMonths(r, today);
   const lastMeter = charges.find((c) => c.type === "electricity" && c.meter)?.meter ?? null;
   const defaultRate = typeof property?.electricityRate === "number" ? property.electricityRate : settingsRate;
-  const thisMonth = monthOf(today);
-  const defaultChargeMonth = thisMonth > chargeBounds.last ? chargeBounds.last : thisMonth < firstMonth ? firstMonth : thisMonth;
+  const defaultChargeMonth = thisMonth > chargeBounds.last ? chargeBounds.last : thisMonth;
 
   // Move-out flow: once a move-out is recorded, the deposit card asks to settle the deposit.
   const settleDeposit = (r.status === "moved_out" || r.movingOut) && deposit.summary.held > 0;
 
   const schedule = [...r.schedule].reverse();
-  const nextDue = r.schedule.find((m) => m.balance > 0);
-  const lastMonth = r.moveOutDate && monthOf(r.moveOutDate) < monthOf(today) ? monthOf(r.moveOutDate) : monthOf(today);
-  const defaultMonth = nextDue?.month ?? lastMonth;
+  // Record payment "For period": oldest unpaid due cycle, else the current cycle.
+  const periods = paymentPeriodOptions(r, r.schedule, today);
+  const defaultMonth = periods.defaultMonth;
+  const defaultCycle = r.schedule.find((m) => m.month === defaultMonth);
+  const currentCycle = r.schedule.find((m) => m.start <= today && today <= m.end);
+  // A rent change applies from the cycle that starts in its effective month.
+  const rentChangeStart = (month: string) => {
+    const c = cycleFor(r, month);
+    return c ? formatDate(c.start) : formatMonth(month);
+  };
 
   return (
     <>
@@ -146,11 +169,13 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
         <StatCard
           label="Monthly rent"
           value={formatMoney(r.currentRent)}
-          hint={
-            r.nextRentChange
-              ? `${formatMoney(r.nextRentChange.monthlyRent)} from ${formatMonth(r.nextRentChange.effectiveMonth)} · due day ${r.dueDay}`
-              : `Due on day ${r.dueDay}`
-          }
+          hint={[
+            r.nextRentChange &&
+              `${formatMoney(r.nextRentChange.monthlyRent)} from ${rentChangeStart(r.nextRentChange.effectiveMonth)}`,
+            currentCycle ? `Cycle ${formatCycle(currentCycle, { short: true })}, due ${formatDate(currentCycle.dueDate)}` : "Paid at the end of each cycle",
+          ]
+            .filter(Boolean)
+            .join(" · ")}
           icon={<IconCalendar />}
         />
         <StatCard
@@ -163,7 +188,7 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
         <StatCard
           label="Overdue"
           value={formatMoney(r.summary.overdueAmount)}
-          hint={r.summary.overdueMonths ? `${r.summary.overdueMonths} month(s) past due` : "All caught up"}
+          hint={r.summary.overdueMonths ? `${r.summary.overdueMonths} cycle(s) past due` : "All caught up"}
           icon={<IconAlert />}
           tone={r.summary.overdueAmount > 0 ? "rose" : "emerald"}
         />
@@ -171,7 +196,7 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
-          <Card title="Rent schedule" description="Rent plus charges, less payments; newest month first." bodyClassName="p-0" actions={<a href={`/api/reports/ledger?rental=${id}&format=pdf`} download className="btn btn-secondary btn-sm">Download ledger</a>}>
+          <Card title="Rent schedule" description="Monthly cycles from the move-in day, paid at the end of each cycle: rent plus charges, less payments; newest first." bodyClassName="p-0" actions={<a href={`/api/reports/ledger?rental=${id}&format=pdf`} download className="btn btn-secondary btn-sm">Download ledger</a>}>
             {schedule.length === 0 ? (
               <EmptyState
                 compact
@@ -182,7 +207,7 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
             ) : (
               <Table>
                 <THead>
-                  <Th>Month</Th>
+                  <Th>Period</Th>
                   <Th>Due date</Th>
                   <Th className="text-right">Due</Th>
                   <Th className="text-right">Paid</Th>
@@ -192,10 +217,15 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
                 <TBody>
                   {schedule.map((m) => (
                     <tr key={m.month} className={m.status === "overdue" ? "bg-rose-50/40" : undefined}>
-                      <Td className="font-medium whitespace-nowrap text-slate-900">{formatMonth(m.month)}</Td>
+                      <Td className="font-medium whitespace-nowrap text-slate-900">{formatCycle(m)}</Td>
                       <Td className="whitespace-nowrap text-slate-600">{formatDate(m.dueDate)}</Td>
                       <Td className="text-right tabular-nums">
                         {formatMoney(m.due)}
+                        {m.rent !== rentForMonth(r, m.month) && (
+                          <span className="block text-[11px] whitespace-nowrap text-slate-500">
+                            Rent pro-rated to {formatDate(m.end)}
+                          </span>
+                        )}
                         {m.charges > 0 && (
                           <span className="block text-[11px] whitespace-nowrap text-slate-500">
                             Rent {formatMoney(m.rent)}
@@ -228,7 +258,7 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
               <Table>
                 <THead>
                   <Th>Paid on</Th>
-                  <Th>For month</Th>
+                  <Th>For period</Th>
                   <Th>Method</Th>
                   <Th>Note</Th>
                   <Th className="text-right">Amount</Th>
@@ -240,7 +270,7 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
                   {payments.map((p) => (
                     <tr key={String(p._id)}>
                       <Td className="whitespace-nowrap">{formatDate(p.paidOn)}</Td>
-                      <Td className="whitespace-nowrap">{formatMonth(p.forMonth)}</Td>
+                      <Td className="whitespace-nowrap">{formatCycleMonth(r, p.forMonth)}</Td>
                       <Td>{p.method === "upi" ? "UPI" : titleCase(p.method)}</Td>
                       <Td className="max-w-[16rem] truncate text-slate-500">{p.note || "—"}</Td>
                       <Td className="text-right font-medium tabular-nums">{formatMoney(p.amount)}</Td>
@@ -256,7 +286,7 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
 
           <Card
             title="Charges"
-            description="Electricity, water, maintenance and other charges, added to that month's rent."
+            description="Electricity, water, maintenance and other charges, added to the rent of the cycle that starts in that month."
             bodyClassName="p-0"
           >
             {charges.length === 0 ? (
@@ -264,7 +294,7 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
             ) : (
               <Table>
                 <THead>
-                  <Th>Month</Th>
+                  <Th>Cycle</Th>
                   <Th>Type</Th>
                   <Th>Details</Th>
                   <Th className="text-right">Amount</Th>
@@ -275,7 +305,7 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
                 <TBody>
                   {charges.map((c) => (
                     <tr key={String(c._id)}>
-                      <Td className="whitespace-nowrap">{formatMonth(c.month)}</Td>
+                      <Td className="whitespace-nowrap">{formatCycleMonth(r, c.month)}</Td>
                       <Td>{chargeLabel(c.type)}</Td>
                       <Td className="text-xs text-slate-500">
                         {[
@@ -306,11 +336,11 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
             )}
           </Card>
 
-          <Card title="Rent history" description="Rent for a month is the latest change effective on or before it." bodyClassName="p-0">
+          <Card title="Rent history" description="A change applies from the billing cycle that starts in its effective month." bodyClassName="p-0">
             <ul className="divide-y divide-slate-100">
               <li className="px-5 py-3">
                 <p className="text-sm font-medium text-slate-900">{formatMoney(r.monthlyRent)} / month</p>
-                <p className="text-xs text-slate-500">From {formatMonth(firstMonth)} · original rent</p>
+                <p className="text-xs text-slate-500">From {formatDate(r.moveInDate)} · original rent</p>
               </li>
               {rentChanges.map((c) => (
                 <li key={String(c._id)} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
@@ -320,7 +350,7 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
                       {c.effectiveMonth > thisMonth && <Badge tone="sky">Scheduled</Badge>}
                     </p>
                     <p className="text-xs text-slate-500">
-                      From {formatMonth(c.effectiveMonth)}
+                      From {rentChangeStart(c.effectiveMonth)}
                       {c.note ? ` · ${c.note}` : ""}
                     </p>
                   </div>
@@ -379,8 +409,9 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
             <PaymentForm
               action={createPayment}
               rentalId={id}
+              periods={{ [id]: periods }}
               compact
-              defaults={{ forMonth: defaultMonth, amount: nextDue?.balance ?? r.currentRent, paidOn: today }}
+              defaults={{ forMonth: defaultMonth, amount: defaultCycle?.balance || r.currentRent, paidOn: today }}
             />
           </Card>
 
@@ -602,7 +633,7 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
           <WifiCard rental={r} occupants={toOccupantRows(tenantDoc?.occupants)} />
 
           {(r.status === "active" || r.movingOut) && (
-            <Card title="Change rent" description="Applies from the chosen month onwards. Earlier months keep their rent.">
+            <Card title="Change rent" description="Applies from the billing cycle starting in the chosen month onwards. Earlier cycles keep their rent.">
               <ActionForm action={changeRent.bind(null, id)} className="space-y-4">
                 <TextField
                   name="effectiveMonth"
@@ -624,7 +655,7 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
           {r.status === "active" && (
             <Card
               title={r.movingOut ? "Change move-out date" : "Move out"}
-              description="Rent stops after the move-out month. The property becomes vacant on that date."
+              description="The last billing cycle ends on the move-out date and its rent is pro-rated by days. The property becomes vacant on that date."
             >
               <ActionForm action={moveOutRental.bind(null, id)} className="space-y-4">
                 <TextField
@@ -652,7 +683,7 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
                 { label: r.status === "moved_out" ? "Moved out" : "Move-out", value: r.moveOutDate ? formatDate(r.moveOutDate) : "Not scheduled" },
                 { label: "Original rent", value: formatMoney(r.monthlyRent) },
                 { label: "Deposit quoted", value: formatMoney(r.deposit) },
-                { label: "Due day", value: String(r.dueDay) },
+                { label: "Billing", value: `Monthly cycles from day ${Number(r.moveInDate.slice(8, 10))}, paid at each cycle's end` },
               ]}
             />
           </Card>

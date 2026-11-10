@@ -3,7 +3,7 @@ import { connectDB } from "./db";
 import { dateFromISO } from "./format";
 import { syncNotificationsSafe } from "./notification-sync";
 import { ensureReceiptNo } from "./receipt-store";
-import { formatMonth, payableMonths } from "./rent";
+import { formatCycleMonth, formatMonth, payableMonths } from "./rent";
 import type { PAYMENT_METHODS } from "./validation";
 import { Payment } from "@/models/Payment";
 import { Rental } from "@/models/Rental";
@@ -18,12 +18,13 @@ export type NewPayment = {
 };
 
 export type RecordPaymentResult =
-  | { ok: true; paymentId: string; propertyId: string; tenantId: string }
+  | { ok: true; paymentId: string; propertyId: string; tenantId: string; /** The billing cycle paid for, e.g. "20 Oct – 19 Nov 2026". */ period: string }
   | { ok: false; field: "rentalId" | "forMonth"; message: string };
 
 /**
- * Records a rent payment (already validated by paymentSchema): the month must be payable for the
- * rental (move-in month through the move-out month, or up to 12 months ahead while open-ended).
+ * Records a rent payment (already validated by paymentSchema): `forMonth` is a billing-cycle key
+ * that must be payable for the rental (move-in cycle through the final cycle, or up to 12 months
+ * ahead while open-ended).
  * Numbers the receipt and refreshes the rental's notifications. Payments are append-only.
  * Shared by the payment form and the MCP connector.
  */
@@ -36,10 +37,10 @@ export async function recordPayment(p: NewPayment): Promise<RecordPaymentResult>
   if (p.forMonth < first || p.forMonth > last) {
     const message =
       p.forMonth < first
-        ? `Month can't be before the move-in month (${formatMonth(first)})`
+        ? `Period can't be before the move-in cycle (${formatCycleMonth(rental, first)})`
         : rental.moveOutDate
-          ? `Month can't be after the move-out month (${formatMonth(last)})`
-          : `Rent can be prepaid up to ${formatMonth(last)}`;
+          ? `Period can't be after the move-out cycle (${formatCycleMonth(rental, last)})`
+          : `Rent can be prepaid up to the cycle starting in ${formatMonth(last)}`;
     return { ok: false, field: "forMonth", message };
   }
 
@@ -57,5 +58,11 @@ export async function recordPayment(p: NewPayment): Promise<RecordPaymentResult>
   // Resolve (or update) this rental's rent notifications right away.
   await syncNotificationsSafe({ scope: { rentalIds: [p.rentalId] } });
 
-  return { ok: true, paymentId: String(payment._id), propertyId: String(rental.property), tenantId: String(rental.tenant) };
+  return {
+    ok: true,
+    paymentId: String(payment._id),
+    propertyId: String(rental.property),
+    tenantId: String(rental.tenant),
+    period: formatCycleMonth(rental, p.forMonth),
+  };
 }
