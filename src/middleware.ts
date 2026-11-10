@@ -12,6 +12,8 @@ export async function middleware(req: NextRequest) {
   if (pathname === "/login") return NextResponse.next();
   // Public landing page (marketing only; it reads the session cookie just to pick its button).
   if (pathname === "/") return NextResponse.next();
+  // Uptime pingers (keep the free Render instance awake): no auth, no data.
+  if (pathname === "/api/health") return NextResponse.next();
   // MCP connector + OAuth endpoints authenticate themselves (bearer tokens / client credentials).
   if (
     pathname.startsWith("/.well-known/") ||
