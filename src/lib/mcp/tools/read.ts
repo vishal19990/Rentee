@@ -2,6 +2,7 @@ import "server-only";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { agreementsNeedingAttention, loadAgreements } from "../../agreement-data";
+import { chargeLabel } from "../../charges";
 import { asObjectId, loadRentals, toId, type RentalRow } from "../../data";
 import { connectDB } from "../../db";
 import { loadDeposit } from "../../deposit-store";
@@ -365,6 +366,7 @@ export function registerReadTools(server: McpServer, run: (fn: () => Promise<Ret
             dueDate: m.dueDate,
             rent: money(m.rent),
             charges: money(m.charges),
+            chargeItems: m.chargeItems.map((c) => ({ type: c.type, label: chargeLabel(c.type), amount: money(c.amount) })),
             due: money(m.due),
             paid: money(m.paid),
             balance: money(m.balance),

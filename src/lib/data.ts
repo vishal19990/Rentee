@@ -15,6 +15,8 @@ import {
   type RentMonth,
   type RentSummary,
 } from "./rent";
+import type { WifiPlanRow } from "./wifi";
+import { loadWifiPlans } from "./wifi-store";
 import { Charge } from "@/models/Charge";
 import { DepositEntry } from "@/models/DepositEntry";
 import { Payment } from "@/models/Payment";
@@ -63,6 +65,8 @@ export type RentalRow = {
   rentChanges: RentChangeLike[];
   /** Utility / other charges (all months). */
   charges: ChargeLike[];
+  /** WiFi plans, oldest first (billed per person as a "wifi" charge item). */
+  wifiPlans: WifiPlanRow[];
   deposit: number;
   dueDay: number;
   status: "active" | "moved_out";
@@ -85,7 +89,7 @@ export async function loadRentals(filter: Record<string, unknown> = {}, today = 
 
   const rentalIds = rentals.map((r) => r._id);
   const advanceIds = rentals.filter((r) => r.depositAdvance).map((r) => r._id);
-  const [properties, tenants, payments, changes, charges, depositIn] = await Promise.all([
+  const [properties, tenants, payments, changes, charges, depositIn, wifiByRental] = await Promise.all([
     Property.find({ _id: { $in: rentals.map((r) => r.property) } }).select("name").lean(),
     Tenant.find({ _id: { $in: rentals.map((r) => r.tenant) } }).select("name phone photo").lean(),
     Payment.find({ rental: { $in: rentalIds } }).select("rental forMonth amount").lean(),
@@ -97,6 +101,7 @@ export async function loadRentals(filter: Record<string, unknown> = {}, today = 
           { $group: { _id: "$rental", total: { $sum: "$amount" } } },
         ])
       : Promise.resolve([]),
+    loadWifiPlans(rentalIds),
   ]);
   const depositReceived = new Map(depositIn.map((d) => [toId(d._id), d.total]));
   const propName = new Map(properties.map((p) => [toId(p._id), p.name]));
@@ -125,7 +130,8 @@ export async function loadRentals(filter: Record<string, unknown> = {}, today = 
   return rentals.map((r) => {
     const rentChanges = changesByRental.get(toId(r._id)) ?? [];
     const rentalCharges = chargesByRental.get(toId(r._id)) ?? [];
-    const terms = { ...r, rentChanges, charges: rentalCharges };
+    const wifiPlans = wifiByRental.get(toId(r._id)) ?? [];
+    const terms = { ...r, rentChanges, charges: rentalCharges, wifiPlans };
     const schedule = rentSchedule(terms, paymentsByRental.get(toId(r._id)) ?? [], today);
     const status = rentalStatus(r, today);
     return {
@@ -143,6 +149,7 @@ export async function loadRentals(filter: Record<string, unknown> = {}, today = 
       nextRentChange: upcomingRentChange(terms, today),
       rentChanges,
       charges: rentalCharges,
+      wifiPlans,
       deposit: r.deposit,
       dueDay: r.dueDay,
       status,

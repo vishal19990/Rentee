@@ -5,7 +5,7 @@
 import { z } from "zod";
 import { fyOf } from "./fy";
 import { formatMoneyShort } from "./money";
-import { chargesForMonth, formatMonth, rentForMonth, type ChargeLike, type RentChangeLike } from "./rent";
+import { chargesForMonth, formatMonth, rentForMonth, type ChargeItem, type ChargeLike, type RentChangeLike, type WifiPlanLike } from "./rent";
 
 export const RECEIPT_PREFIX = "RNT";
 
@@ -47,7 +47,7 @@ export type ReceiptPaymentLike = { id: string; forMonth: string; amount: number;
 export type ReceiptBreakdown = {
   month: string;
   rent: number;
-  chargeItems: { type: string; amount: number }[];
+  chargeItems: ChargeItem[];
   /** Rent + charges for the month. */
   monthDue: number;
   /** Paid towards the month up to and including this payment. */
@@ -61,7 +61,14 @@ export type ReceiptBreakdown = {
  * up to and including this payment (payments ordered by date paid, then creation).
  */
 export function receiptBreakdown(
-  rental: { monthlyRent: number; rentChanges?: RentChangeLike[]; charges?: ChargeLike[] },
+  rental: {
+    monthlyRent: number;
+    rentChanges?: RentChangeLike[];
+    charges?: ChargeLike[];
+    wifiPlans?: WifiPlanLike[];
+    moveInDate?: Date | string | null;
+    moveOutDate?: Date | string | null;
+  },
   payment: ReceiptPaymentLike,
   monthPayments: ReceiptPaymentLike[],
 ): ReceiptBreakdown {

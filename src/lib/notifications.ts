@@ -11,7 +11,7 @@
  */
 import { formatDate } from "./format";
 import { formatMoney } from "./money";
-import { addMonths, dueForMonth, formatMonth, monthOf, type ChargeLike, type RentChangeLike, type RentMonth } from "./rent";
+import { addMonths, dueForMonth, formatMonth, monthOf, type ChargeLike, type RentChangeLike, type RentMonth, type WifiPlanLike } from "./rent";
 
 export const NOTIFICATION_TYPES = [
   "rent_overdue",
@@ -80,6 +80,7 @@ export type RentalInput = {
   monthlyRent: number;
   rentChanges?: RentChangeLike[];
   charges?: ChargeLike[];
+  wifiPlans?: WifiPlanLike[];
   dueDay: number;
   schedule: RentMonth[];
 };

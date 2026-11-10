@@ -20,6 +20,7 @@ import { User } from "@/models/User";
 import { ActionForm, CheckboxField, ConfirmAction, MoneyField, SubmitButton, TextAreaField, TextField } from "@/components/form";
 import { EnableDesktopButton } from "@/components/notifications";
 import { AgreementSettingsCard } from "@/components/agreement-settings-card";
+import { WifiSettingsCard } from "@/components/wifi-settings-card";
 import { ConnectedAppsCard } from "@/components/connected-apps-card";
 import { LandlordSettingsCard, UpiSettingsCard } from "@/components/receipt-settings-cards";
 import { appBaseUrl } from "@/lib/app-url";
@@ -212,6 +213,8 @@ export default async function SettingsPage() {
             </div>
           </ActionForm>
         </Card>
+
+        <WifiSettingsCard />
 
         <AgreementSettingsCard />
 

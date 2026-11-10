@@ -62,15 +62,19 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] WifiPlan model + pure plan→monthly items logic + tests for every matrix row
-- [ ] integrate into schedule/loadRentals; settings price; rental WiFi card with add/change/stop/remove
-- [ ] receipts/reports/reminders/ledger labels; dashboard card; README
+- [x] WifiPlan model + pure plan→monthly items logic + tests for every matrix row
+- [x] integrate into schedule/loadRentals; settings price; rental WiFi card with add/change/stop/remove
+- [x] receipts/reports/reminders/ledger labels; dashboard card; README
 
 **Acceptance Criteria:**
 - Given an existing rental with no WiFi, when the app loads, then its dues are unchanged.
 - Given WiFi for 2 people at ₹100 from this month, when viewing the rental, dashboard overdue list, WhatsApp reminder and receipt, then each shows ₹200 WiFi on top of rent.
 
 ## Implementation Notes
+
+- Pure logic in `src/lib/wifi.ts` (plan→month item, add/change/stop/remove edits, overlap guard, dashboard summary), tested in `src/lib/wifi.test.ts`. `chargesForMonth` appends the virtual `wifi` item, clipped to the stay when move-in/out dates are passed, so every consumer of `rentSchedule`/`dueForMonth` gets it.
+- Collections Excel gets a trailing "WiFi (in charges)" column (appended last so existing column positions are unchanged); screen shows "incl. WiFi ₹X". Receipts say "towards rent and WiFi" when WiFi is the only extra.
+- Checkbox people are posted as `person_tenant` / `person_<occupantId>` and filtered server-side against the tenant + current occupants.
 
 ## Spec Change Log
 

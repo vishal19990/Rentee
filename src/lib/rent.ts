@@ -5,12 +5,16 @@
  * For each month from the move-in month through the current month (or through the move-out
  * month, if a move-out date is recorded and earlier):
  *   rent = latest rent change effective on/before the month, else the rental's original rent,
- *   charges = sum of utility/other charges for the month,
+ *   charges = sum of utility/other charges for the month (+ WiFi from a WiFi plan, see wifi.ts),
  *   due = rent + charges, paid = sum of payments for that `forMonth`,
  *   status = paid if paid >= due; otherwise overdue / partial once past the due day,
  *   upcoming before it.
  * All comparisons use ISO date strings (YYYY-MM-DD) to stay timezone-safe.
  */
+
+import { wifiItemForMonth, type WifiPlanLike } from "./wifi";
+
+export type { WifiPlanLike } from "./wifi";
 
 /** A rent change: from `effectiveMonth` (YYYY-MM) on, the monthly rent is `monthlyRent`. */
 export type RentChangeLike = { effectiveMonth: string; monthlyRent: number };
@@ -26,9 +30,13 @@ export type RentalLike = {
   dueDay: number;
   rentChanges?: RentChangeLike[];
   charges?: ChargeLike[];
+  /** WiFi plans (billed per person as a virtual "wifi" charge item). */
+  wifiPlans?: WifiPlanLike[];
 };
 
 export type PaymentLike = { forMonth: string; amount: number };
+
+export type ChargeItem = { type: string; amount: number; label?: string };
 
 export type MonthStatus = "paid" | "partial" | "overdue" | "upcoming";
 
@@ -41,8 +49,8 @@ export type RentMonth = {
   rent: number;
   /** Total utility / other charges for this month. */
   charges: number;
-  /** Charge breakdown by type, in insertion order. */
-  chargeItems: { type: string; amount: number }[];
+  /** Charge breakdown by type, in insertion order (WiFi last, with a label like "WiFi (2 people)"). */
+  chargeItems: ChargeItem[];
   /** rent + charges. */
   due: number;
   paid: number;
@@ -144,22 +152,27 @@ export function rentForMonth(rental: Pick<RentalLike, "monthlyRent" | "rentChang
   return best ? best.monthlyRent : rental.monthlyRent;
 }
 
-/** Charges billed for a month: total and per-type breakdown (same types merged). */
-export function chargesForMonth(
-  rental: Pick<RentalLike, "charges">,
-  month: string,
-): { total: number; items: { type: string; amount: number }[] } {
+/** Rental fields charges depend on; the stay dates (when given) keep WiFi inside the stay. */
+type ChargeTerms = Pick<RentalLike, "charges" | "wifiPlans"> & {
+  moveInDate?: Date | string | null;
+  moveOutDate?: Date | string | null;
+};
+
+/** Charges billed for a month: total and per-type breakdown (same types merged), plus WiFi. */
+export function chargesForMonth(rental: ChargeTerms, month: string): { total: number; items: ChargeItem[] } {
   const byType = new Map<string, number>();
   for (const c of rental.charges ?? []) {
     if (c.month !== month) continue;
     byType.set(c.type, (byType.get(c.type) ?? 0) + c.amount);
   }
-  const items = [...byType].map(([type, amount]) => ({ type, amount }));
+  const items: ChargeItem[] = [...byType].map(([type, amount]) => ({ type, amount }));
+  const wifi = wifiItemForMonth(rental, month);
+  if (wifi) items.push(wifi);
   return { total: items.reduce((s, i) => s + i.amount, 0), items };
 }
 
-/** What is due for a month: rent (after changes) + charges. */
-export function dueForMonth(rental: Pick<RentalLike, "monthlyRent" | "rentChanges" | "charges">, month: string): number {
+/** What is due for a month: rent (after changes) + charges (+ WiFi). */
+export function dueForMonth(rental: Pick<RentalLike, "monthlyRent" | "rentChanges"> & ChargeTerms, month: string): number {
   return rentForMonth(rental, month) + chargesForMonth(rental, month).total;
 }
 

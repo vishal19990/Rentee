@@ -101,6 +101,7 @@ export async function collectionsXlsx(data: { report: CollectionsReport; byMonth
       { header: "Paid", key: "paid", width: 14, money: true },
       { header: "Balance", key: "balance", width: 14, money: true },
       { header: "Status", key: "status", width: 11 },
+      { header: "WiFi (in charges)", key: "wifi", width: 16, money: true },
     ],
     report.rows.map((r) => ({
       property: r.propertyName,
@@ -108,6 +109,7 @@ export async function collectionsXlsx(data: { report: CollectionsReport; byMonth
       dueDate: r.dueDate,
       rent: r.rent,
       charges: r.charges,
+      wifi: r.wifi,
       due: r.due,
       paid: r.paid,
       balance: r.balance,
