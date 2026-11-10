@@ -11,6 +11,7 @@ import { localToday, monthOf, rentalStatus, toISODate } from "@/lib/rent";
 import { moveOutSchema, parseForm, rentalCreateSchema, rentalUpdateSchema, type ActionState } from "@/lib/validation";
 import { agreedDepositGuard, ensureDepositLedger } from "@/lib/deposit-store";
 import { linkConvertedRental } from "@/lib/enquiry-data";
+import { roomChangeError } from "@/lib/room-change";
 import { Charge } from "@/models/Charge";
 import { DepositEntry } from "@/models/DepositEntry";
 import { Payment } from "@/models/Payment";
@@ -246,4 +247,47 @@ export async function deleteRental(id: string): Promise<ActionState> {
   await syncNotificationsSafe({ scope: { rentalIds: [id] } });
   revalidateRentalViews(undefined, String(rental.property), String(rental.tenant));
   redirect("/rentals");
+}
+
+/**
+ * "Change room": moves a rental to another (vacant) property in place, keeping its deposit,
+ * advance, agreement, charges and payments. Only before the stay has started (see roomChangeError).
+ */
+export async function changeRentalProperty(id: string, _prev: ActionState, fd: FormData): Promise<ActionState> {
+  await requireUser();
+  const _id = asObjectId(id);
+  if (!_id) return NOT_FOUND;
+  const fail = (msg: string): ActionState => ({ ok: false, message: msg, fieldErrors: { propertyId: [msg] } });
+  const newProperty = asObjectId(String(fd.get("propertyId") ?? ""));
+  if (!newProperty) return fail("Choose the new room / property");
+
+  await connectDB();
+  await syncRentalStatuses();
+  const rental = await Rental.findById(_id).lean();
+  if (!rental) return NOT_FOUND;
+  if (String(rental.property) === String(newProperty)) return fail("The rental is already for this property");
+  const target = await Property.findById(newProperty).select("name archived").lean();
+  if (!target || target.archived) return fail("That property isn't available");
+
+  const today = localToday();
+  const ruleError = roomChangeError({
+    status: rental.status,
+    moveInDate: toISODate(rental.moveInDate),
+    today,
+    hasPayments: !!(await Payment.exists({ rental: _id })),
+  });
+  if (ruleError) return { ok: false, message: ruleError };
+  if (await Rental.exists({ property: newProperty, status: "active" })) return fail(ACTIVE_EXISTS);
+
+  try {
+    const res = await Rental.updateOne({ _id, property: rental.property }, { $set: { property: newProperty } });
+    if (res.matchedCount === 0) return { ok: false, message: "The rental changed meanwhile. Please try again." };
+  } catch (err) {
+    if (isDuplicateKey(err)) return fail(ACTIVE_EXISTS); // someone else took the room meanwhile
+    throw err;
+  }
+  await syncNotificationsSafe({ scope: { rentalIds: [id] } });
+  revalidateRentalViews(id, String(rental.property), String(rental.tenant));
+  revalidatePath(`/properties/${String(newProperty)}`);
+  return { ok: true, message: `Moved to ${target.name}.` };
 }

@@ -55,6 +55,7 @@ import {
 import { DepositReminderButton } from "@/components/deposit-reminder-button";
 import { ChargeForm } from "./charge-form";
 import { TenantAvatar } from "@/components/tenant-avatar";
+import { ChangeRoomCard } from "@/components/change-room-card";
 
 export const metadata: Metadata = { title: "Rental" };
 
@@ -649,6 +650,15 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
               ]}
             />
           </Card>
+
+          <ChangeRoomCard
+            rentalId={id}
+            currentPropertyId={r.propertyId}
+            status={r.status}
+            moveInDate={r.moveInDate}
+            hasPayments={payments.length > 0}
+            today={today}
+          />
 
           <Card title="Danger zone">
             <div className="flex items-center justify-between gap-3">
