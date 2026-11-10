@@ -1,5 +1,5 @@
 import { amountInWords } from "@/lib/amount-words";
-import { chargeLabel } from "@/lib/charges";
+import { chargeLabel, chargesPhrase } from "@/lib/charges";
 import { formatDate } from "@/lib/format";
 import { CURRENCY, formatMoney } from "@/lib/money";
 import { isDepositReceipt, type DepositReceiptData, type ReceiptData } from "@/lib/receipts";
@@ -34,7 +34,7 @@ export function ReceiptView({ r: data }: { r: ReceiptData | DepositReceiptData }
 
         <p className="text-sm leading-relaxed text-slate-700">
           Received with thanks from <strong className="text-slate-900">{r.tenantName}</strong> the sum of{" "}
-          <strong className="text-slate-900">{formatMoney(r.amount)}</strong> towards rent{b.chargeItems.length > 0 && " and charges"} for{" "}
+          <strong className="text-slate-900">{formatMoney(r.amount)}</strong> towards rent{chargesPhrase(b.chargeItems)} for{" "}
           <strong className="text-slate-900">{r.propertyName}</strong>
           {r.propertyAddress && `, ${r.propertyAddress}`}, for the month of {formatMonth(b.month)}.
         </p>

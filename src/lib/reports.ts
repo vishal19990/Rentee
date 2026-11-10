@@ -27,6 +27,8 @@ export type CollectionRow = {
   dueDate: string;
   rent: number;
   charges: number;
+  /** Part of `charges` that is WiFi (per-person WiFi plan). */
+  wifi: number;
   due: number;
   paid: number;
   balance: number;
@@ -67,6 +69,7 @@ export function collectionsReport(
       dueDate: m.dueDate,
       rent: m.rent,
       charges: m.charges,
+      wifi: m.chargeItems.filter((c) => c.type === "wifi").reduce((s, c) => s + c.amount, 0),
       due: m.due,
       paid: m.paid,
       balance: m.balance,

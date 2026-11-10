@@ -20,6 +20,7 @@ import { Property } from "@/models/Property";
 import { Rental } from "@/models/Rental";
 import { Tenant } from "@/models/Tenant";
 import { Agreement } from "@/models/Agreement";
+import { WifiPlan } from "@/models/WifiPlan";
 import { TenantDocument } from "@/models/TenantDocument";
 
 const NOT_FOUND: ActionState = { ok: false, message: "Rental not found." };
@@ -242,6 +243,7 @@ export async function deleteRental(id: string): Promise<ActionState> {
     Charge.deleteMany({ rental: _id }),
     RentChange.deleteMany({ rental: _id }),
     Agreement.deleteMany({ rental: _id }),
+    WifiPlan.deleteMany({ rental: _id }),
   ]);
   await TenantDocument.updateMany({ rental: _id }, { $set: { rental: null } }); // documents stay with the tenant
   await syncNotificationsSafe({ scope: { rentalIds: [id] } });

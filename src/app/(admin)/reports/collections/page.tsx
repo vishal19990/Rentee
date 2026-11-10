@@ -77,7 +77,8 @@ export default async function CollectionsPage({ searchParams }: { searchParams: 
                     <Td className="whitespace-nowrap text-slate-600">{formatDate(r.dueDate)}</Td>
                     <Td className="text-right tabular-nums">
                       {formatMoney(r.due)}
-                      {r.charges > 0 && <span className="block text-xs text-slate-500">incl. {formatMoney(r.charges)} charges</span>}
+                      {r.charges > r.wifi && <span className="block text-xs text-slate-500">incl. {formatMoney(r.charges - r.wifi)} charges</span>}
+                      {r.wifi > 0 && <span className="block text-xs text-slate-500">incl. WiFi {formatMoney(r.wifi)}</span>}
                     </Td>
                     <Td className="text-right tabular-nums">{formatMoney(r.paid)}</Td>
                     <Td className={`text-right font-medium tabular-nums ${r.balance > 0 ? "text-rose-600" : "text-slate-400"}`}>

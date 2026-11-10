@@ -4,7 +4,7 @@
  */
 import { z } from "zod";
 import { CURRENCY, minorDigits } from "./money";
-import { addMonths, dueForMonth, monthOf, monthRange, type ChargeLike, type RentChangeLike, type RentMonth } from "./rent";
+import { addMonths, dueForMonth, monthOf, monthRange, type ChargeLike, type RentChangeLike, type RentMonth, type WifiPlanLike } from "./rent";
 
 /** UPI VPA, e.g. "landlord@okhdfcbank". */
 export const VPA_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]{1,255}@[a-zA-Z][a-zA-Z0-9.-]{1,63}$/;
@@ -49,6 +49,7 @@ export function payDue(
     monthlyRent: number;
     rentChanges?: RentChangeLike[];
     charges?: ChargeLike[];
+    wifiPlans?: WifiPlanLike[];
     schedule: RentMonth[];
   },
   through: string | null,

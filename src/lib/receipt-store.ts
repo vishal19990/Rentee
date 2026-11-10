@@ -16,6 +16,7 @@ import {
   type DepositReceiptData,
 } from "./receipts";
 import { depositPaymentLabel } from "./deposit";
+import { loadWifiPlans } from "./wifi-store";
 import { toISODate } from "./rent";
 import { Charge } from "@/models/Charge";
 import { Counter } from "@/models/Counter";
@@ -73,7 +74,7 @@ export async function loadReceipt(paymentId: string, view: "admin" | "public"): 
   const receiptNo = await ensureReceiptNo(_id);
   const payment = await Payment.findById(_id).lean();
   if (!payment || !receiptNo) return null;
-  const rental = await Rental.findById(payment.rental).select("property tenant monthlyRent").lean();
+  const rental = await Rental.findById(payment.rental).select("property tenant monthlyRent moveInDate moveOutDate").lean();
   if (!rental) return null;
 
   const [tenant, property, changes, charges, monthPayments, landlord] = await Promise.all([
@@ -84,6 +85,7 @@ export async function loadReceipt(paymentId: string, view: "admin" | "public"): 
     Payment.find({ rental: rental._id, forMonth: payment.forMonth }).select("forMonth amount paidOn createdAt").lean(),
     getLandlordDetails(),
   ]);
+  const wifiPlans = await loadWifiPlans([rental._id]);
 
   const asLike = (p: { _id: unknown; forMonth: string; amount: number; paidOn: Date; createdAt?: Date }) => ({
     id: toId(p._id),
@@ -97,6 +99,9 @@ export async function loadReceipt(paymentId: string, view: "admin" | "public"): 
       monthlyRent: rental.monthlyRent,
       rentChanges: changes.map((c) => ({ effectiveMonth: c.effectiveMonth, monthlyRent: c.monthlyRent })),
       charges: charges.map((c) => ({ month: c.month, type: c.type, amount: c.amount })),
+      wifiPlans: wifiPlans.get(toId(rental._id)) ?? [],
+      moveInDate: rental.moveInDate,
+      moveOutDate: rental.moveOutDate ?? null,
     },
     asLike(payment),
     monthPayments.map(asLike),

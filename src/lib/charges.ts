@@ -11,7 +11,14 @@ export const CHARGE_TYPE_LABELS: Record<ChargeType, string> = {
 };
 
 export function chargeLabel(type: string): string {
+  if (type === "wifi") return "WiFi"; // virtual item from a WiFi plan (lib/wifi.ts), not a stored charge type
   return CHARGE_TYPE_LABELS[type as ChargeType] ?? type;
+}
+
+/** Receipt wording after "towards rent": "", " and WiFi" (only WiFi) or " and charges". */
+export function chargesPhrase(items: { type: string }[]): string {
+  if (items.length === 0) return "";
+  return items.every((i) => i.type === "wifi") ? " and WiFi" : " and charges";
 }
 
 /** Units consumed between two meter readings (rounded to 2 decimals), or null if current < previous. */

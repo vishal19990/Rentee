@@ -87,6 +87,7 @@ async function main() {
       "appsettings",
       "rentchanges",
       "charges",
+      "wifiplans",
       "depositentries",
       "expenses",
       "photos.files",

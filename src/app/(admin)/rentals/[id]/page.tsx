@@ -58,6 +58,7 @@ import { TenantAvatar } from "@/components/tenant-avatar";
 import { ChangeRoomCard } from "@/components/change-room-card";
 import { OccupantsSummary, toOccupantRows } from "@/components/occupants-card";
 import { Tenant } from "@/models/Tenant";
+import { WifiCard } from "@/components/wifi-card";
 
 export const metadata: Metadata = { title: "Rental" };
 
@@ -597,6 +598,8 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
               currency={symbol}
             />
           </Card>
+
+          <WifiCard rental={r} occupants={toOccupantRows(tenantDoc?.occupants)} />
 
           {(r.status === "active" || r.movingOut) && (
             <Card title="Change rent" description="Applies from the chosen month onwards. Earlier months keep their rent.">

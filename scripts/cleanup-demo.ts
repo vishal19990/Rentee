@@ -99,6 +99,7 @@ const add = async (label: string, collection: string, filter: object) => {
 
 await add("Payments", "payments", { rental: { $in: rentalIds } });
 await add("Charges", "charges", { rental: { $in: rentalIds } });
+await add("WiFi plans", "wifiplans", { rental: { $in: rentalIds } });
 await add("Rent changes", "rentchanges", { rental: { $in: rentalIds } });
 await add("Deposit entries", "depositentries", { rental: { $in: rentalIds } });
 await add("Agreements", "agreements", { rental: { $in: rentalIds } });

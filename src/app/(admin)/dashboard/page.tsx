@@ -16,6 +16,7 @@ import { ButtonLink, Card, EmptyState, PageHeader, StatCard, StatusBadge } from 
 import { WhatsAppReminderButton } from "@/components/whatsapp-button";
 import { AgreementsExpiringCard } from "@/components/agreements-expiring-card";
 import { DepositBalancesCard } from "@/components/deposit-balances-card";
+import { WifiDashboardCard } from "@/components/wifi-dashboard-card";
 import { EnquiriesDashboardCard } from "@/components/enquiries-dashboard-card";
 import {
   IconAlert,
@@ -273,6 +274,8 @@ export default async function DashboardPage() {
         </Suspense>
 
         <DepositBalancesCard rentals={rentals} />
+
+        <WifiDashboardCard rentals={rentals} month={thisMonth} />
 
         <Suspense fallback={<SkeletonCard rows={3} />}>
           <EnquiriesDashboardCard today={today} />

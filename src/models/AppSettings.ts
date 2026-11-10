@@ -20,6 +20,8 @@ const appSettingsSchema = new Schema(
     desktopNotifications: { type: Boolean, default: true },
     /** Default electricity rate per unit (minor units) when a property has none; null = not set. */
     defaultElectricityRate: { type: Number, min: 0, default: null },
+    /** WiFi price per person per month (minor units); used for plans created/changed afterwards. */
+    wifiRatePerPerson: { type: Number, min: 0, default: 10000 },
     /** Last notification sync (throttle: at most once per 5 minutes). */
     notificationsSyncedAt: { type: Date, default: null },
     /** Landlord details printed on rent receipts (F1); empty = not shown. */

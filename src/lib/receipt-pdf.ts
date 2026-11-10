@@ -4,7 +4,7 @@
  */
 import { PDFDocument, rgb } from "pdf-lib";
 import { amountInWords } from "./amount-words";
-import { chargeLabel } from "./charges";
+import { chargeLabel, chargesPhrase } from "./charges";
 import { formatDate } from "./format";
 import { CURRENCY, formatMoney } from "./money";
 import { embedAppFonts, type AppFonts } from "./pdf-fonts";
@@ -82,7 +82,7 @@ export async function renderReceiptPdf(data: ReceiptData | DepositReceiptData): 
   // Statement
   const statement =
     `Received with thanks from ${r.tenantName} the sum of ${formatMoney(r.amount)} towards rent` +
-    `${r.breakdown.chargeItems.length ? " and charges" : ""} for ${r.propertyName}` +
+    `${chargesPhrase(r.breakdown.chargeItems)} for ${r.propertyName}` +
     `${r.propertyAddress ? `, ${r.propertyAddress}` : ""}, for the month of ${formatMonth(r.breakdown.month)}.`;
   for (const line of wrap(fonts, statement, 11, contentWidth)) {
     text(line, left, y, { size: 11 });

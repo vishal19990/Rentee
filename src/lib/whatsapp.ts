@@ -5,7 +5,7 @@
  */
 import { formatDate } from "./format";
 import { formatMoneyShort } from "./money";
-import { addMonths, dueForMonth, formatMonth, monthOf, type ChargeLike, type RentChangeLike, type RentMonth } from "./rent";
+import { addMonths, dueForMonth, formatMonth, monthOf, type ChargeLike, type RentChangeLike, type RentMonth, type WifiPlanLike } from "./rent";
 
 export const DEFAULT_COUNTRY_CODE = (process.env.NEXT_PUBLIC_DEFAULT_COUNTRY_CODE || "91").replace(/\D/g, "") || "91";
 
@@ -84,6 +84,7 @@ export type ReminderRental = {
   monthlyRent: number;
   rentChanges?: RentChangeLike[];
   charges?: ChargeLike[];
+  wifiPlans?: WifiPlanLike[];
   dueDay: number;
   moveOutDate: string | null;
   schedule: RentMonth[];
