@@ -56,6 +56,8 @@ import { DepositReminderButton } from "@/components/deposit-reminder-button";
 import { ChargeForm } from "./charge-form";
 import { TenantAvatar } from "@/components/tenant-avatar";
 import { ChangeRoomCard } from "@/components/change-room-card";
+import { OccupantsSummary, toOccupantRows } from "@/components/occupants-card";
+import { Tenant } from "@/models/Tenant";
 
 export const metadata: Metadata = { title: "Rental" };
 
@@ -79,6 +81,7 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
     getDefaultElectricityRate(),
     ReminderLog.findOne({ rental: _id, kind: "deposit" }).sort({ sentAt: -1 }).select("sentAt").lean(),
   ]);
+  const tenantDoc = await Tenant.findById(r.tenantId).select("occupants").lean();
   const reminder = reminders.get(r.id);
   // Deposit: quoted, advance, paid later, balance; WhatsApp reminder while a balance is due.
   const dep = deposit.status;
@@ -650,6 +653,8 @@ export default async function RentalPage({ params }: { params: Promise<{ id: str
               ]}
             />
           </Card>
+
+          <OccupantsSummary tenantId={r.tenantId} occupants={toOccupantRows(tenantDoc?.occupants)} />
 
           <ChangeRoomCard
             rentalId={id}

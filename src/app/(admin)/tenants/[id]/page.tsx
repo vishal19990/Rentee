@@ -27,6 +27,7 @@ import {
 } from "@/components/ui";
 import { WhatsAppReminderButton } from "@/components/whatsapp-button";
 import { DocumentsCard } from "@/components/documents-card";
+import { OccupantsCard, toOccupantRows } from "@/components/occupants-card";
 import { TenantAvatar } from "@/components/tenant-avatar";
 import { TenantPhotoUploader } from "@/components/tenant-photo-uploader";
 import { IconArchive, IconFile, IconPencil, IconPlus, IconTrash } from "@/components/icons";
@@ -125,6 +126,7 @@ export default async function TenantPage({ params }: { params: Promise<{ id: str
               </Table>
             )}
           </Card>
+          <OccupantsCard tenantId={id} occupants={toOccupantRows(t.occupants)} />
           <DocumentsCard tenantId={id} />
         </div>
         <div className="space-y-6">

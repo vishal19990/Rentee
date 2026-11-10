@@ -12,6 +12,23 @@ const tenantSchema = new Schema(
     archived: { type: Boolean, default: false, index: true },
     /** Profile photo: GridFS file id in the "avatars" bucket (square JPEG, resized in the browser). */
     photo: { type: Schema.Types.ObjectId, default: null },
+    /** Other people staying with this tenant (co-occupants / secondary contacts). Admin-only. */
+    occupants: {
+      type: [
+        new Schema(
+          {
+            name: { type: String, required: true, trim: true },
+            phone: { type: String, default: "", trim: true },
+            relation: { type: String, enum: ["spouse", "family", "roommate", "friend", "other"], default: "other" },
+            idLast4: { type: String, default: "", trim: true },
+            notes: { type: String, default: "" },
+            emergency: { type: Boolean, default: false },
+          },
+          { timestamps: true },
+        ),
+      ],
+      default: [],
+    },
   },
   { timestamps: true },
 );
