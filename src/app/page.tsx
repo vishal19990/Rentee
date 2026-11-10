@@ -40,6 +40,7 @@ const FEATURES = [
   { icon: IconCalendar, title: "Agreements", text: "11-month agreements with one-click renewal and expiry reminders." },
   { icon: IconMail, title: "Enquiries", text: "Track every walk-in and call from first contact to tenant — or not." },
   { icon: IconWrench, title: "Maintenance", text: "Log repairs, track their status and turn costs into expenses." },
+  { icon: IconUsers, title: "Tenant portal", text: "Tenants sign in on their phone to see dues, pay by UPI, get receipts and report repairs." },
   { icon: IconPanorama, title: "360° virtual tours", text: "Room-by-room 360° photos people can walk through from a link — fewer wasted visits." },
 ];
 
@@ -349,9 +350,14 @@ export default async function LandingPage() {
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-4 py-8 text-sm text-slate-500 sm:flex-row sm:px-6">
           <Logo />
           <p>© {new Date().getFullYear()} Rentee · Rental management for landlords</p>
-          <Link href={cta.href} className="link">
-            {cta.label}
-          </Link>
+          <span className="flex gap-4">
+            <Link href="/portal/login" className="link">
+              Tenant sign in
+            </Link>
+            <Link href={cta.href} className="link">
+              {cta.label}
+            </Link>
+          </span>
         </div>
       </footer>
     </div>

@@ -10,11 +10,12 @@ import { openFromStorage, sealForStorage } from "./file-crypto";
  *   - "bills": expense bill attachments (F2)
  *   - "tours": 360° virtual tour room photos and thumbnails
  *   - "avatars": tenant profile photos
+ *   - "maintenance": photos tenants attach to repair requests (tenant portal)
  */
-export type FileBucket = "bills" | "tours" | "avatars";
+export type FileBucket = "bills" | "tours" | "avatars" | "maintenance";
 
 /** Buckets holding personal data: encrypted at rest with FILES_ENCRYPTION_KEY (see file-crypto.ts). */
-const ENCRYPTED_BUCKETS: ReadonlySet<FileBucket> = new Set(["bills", "avatars"]);
+const ENCRYPTED_BUCKETS: ReadonlySet<FileBucket> = new Set(["bills", "avatars", "maintenance"]);
 
 async function bucket(name: FileBucket) {
   await connectDB();

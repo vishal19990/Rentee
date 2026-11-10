@@ -29,9 +29,32 @@ const tenantSchema = new Schema(
       ],
       default: [],
     },
+    /** Tenant portal account (see lib/portal-auth.ts, lib/tenant-auth.ts). Absent until invited. */
+    portal: {
+      type: new Schema(
+        {
+          enabled: { type: Boolean, default: false },
+          passwordHash: { type: String, default: null },
+          /** Normalized digits (normalizePhone); unique among tenants with an account. */
+          loginPhone: { type: String, default: undefined },
+          inviteTokenHash: { type: String, default: null },
+          inviteExpiresAt: { type: Date, default: null },
+          sessionVersion: { type: Number, default: 0 },
+          lastLoginAt: { type: Date, default: null },
+        },
+        { _id: false },
+      ),
+      default: undefined,
+    },
   },
   { timestamps: true },
 );
+
+tenantSchema.index(
+  { "portal.loginPhone": 1 },
+  { unique: true, partialFilterExpression: { "portal.loginPhone": { $type: "string" } }, name: "one_portal_account_per_phone" },
+);
+tenantSchema.index({ "portal.inviteTokenHash": 1 }, { partialFilterExpression: { "portal.inviteTokenHash": { $type: "string" } }, name: "portal_invite_token" });
 
 export type TenantDoc = InferSchemaType<typeof tenantSchema>;
 

@@ -7,7 +7,7 @@ import { formatDate } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
 import { Maintenance } from "@/models/Maintenance";
 import { Property } from "@/models/Property";
-import { ButtonLink, EmptyState, FilterTabs, PageHeader, StatusBadge, Table, TBody, Td, Th, THead } from "@/components/ui";
+import { Badge, ButtonLink, EmptyState, FilterTabs, PageHeader, StatusBadge, Table, TBody, Td, Th, THead } from "@/components/ui";
 import { IconPlus, IconWrench } from "@/components/icons";
 import { setMaintenanceStatus } from "./actions";
 
@@ -83,7 +83,15 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
                       <Link href={`/maintenance/${id}/edit`} className="font-medium text-slate-900 hover:text-brand-700">
                         {m.title}
                       </Link>
-                      <div className="text-xs text-slate-400">{formatDate(m.createdAt)}</div>
+                      <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-400">
+                        {formatDate(m.createdAt)}
+                        {m.createdBy === "tenant" && <Badge tone="violet">From tenant</Badge>}
+                        {m.photo && (
+                          <a href={`/api/maintenance/${id}/photo`} target="_blank" rel="noopener" className="text-brand-700 hover:underline">
+                            Photo
+                          </a>
+                        )}
+                      </div>
                     </Td>
                     <Td>
                       <Link href={`/properties/${toId(m.property)}`} className="text-slate-600 hover:text-brand-700">

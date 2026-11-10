@@ -18,6 +18,8 @@ const TYPE_LABEL: Record<string, string> = {
   agreement_expired: "Agreement expired",
   enquiry_follow_up: "Enquiry follow-up",
   enquiry_visit: "Enquiry visit",
+  maintenance_tenant_request: "Tenant request",
+  tenant_details_changed: "Tenant details",
 };
 
 export function NotificationPageActions() {

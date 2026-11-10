@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { asObjectId } from "@/lib/data";
 import { connectDB } from "@/lib/db";
+import { deleteFile } from "@/lib/file-store";
+import type { Types } from "mongoose";
 import { syncNotificationsSafe } from "@/lib/notification-sync";
 import { MAINTENANCE_STATUSES, maintenanceSchema, parseForm, type ActionState } from "@/lib/validation";
 import { Maintenance } from "@/models/Maintenance";
@@ -71,6 +73,7 @@ export async function deleteMaintenance(id: string): Promise<ActionState> {
   await connectDB();
   const doc = await Maintenance.findByIdAndDelete(_id).lean();
   if (!doc) return NOT_FOUND;
+  await deleteFile("maintenance", doc.photo as Types.ObjectId | null); // a tenant's photo, if any
   await syncNotificationsSafe({ scope: { maintenanceIds: [id] } });
   revalidateAll(String(doc.property));
   redirect("/maintenance");

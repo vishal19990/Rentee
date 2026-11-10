@@ -30,6 +30,9 @@ import { DocumentsCard } from "@/components/documents-card";
 import { OccupantsCard, toOccupantRows } from "@/components/occupants-card";
 import { TenantAvatar } from "@/components/tenant-avatar";
 import { TenantPhotoUploader } from "@/components/tenant-photo-uploader";
+import { TenantPortalCard } from "@/components/tenant-portal-card";
+import { TenantChangesCard } from "@/components/tenant-changes-card";
+import { TenantChangeLog } from "@/models/TenantChangeLog";
 import { IconArchive, IconFile, IconPencil, IconPlus, IconTrash } from "@/components/icons";
 import { deleteTenant, setTenantArchived } from "../actions";
 
@@ -49,6 +52,7 @@ export default async function TenantPage({ params }: { params: Promise<{ id: str
   const hasWhatsApp = normalizePhone(t.phone) !== null;
   const totalPaid = rentals.reduce((s, l) => s + l.summary.totalPaid, 0);
   const totalOverdue = rentals.reduce((s, l) => s + l.summary.overdueAmount, 0);
+  const changes = await TenantChangeLog.find({ tenant: _id }).sort({ at: -1 }).limit(10).lean();
 
   return (
     <>
@@ -127,6 +131,7 @@ export default async function TenantPage({ params }: { params: Promise<{ id: str
             )}
           </Card>
           <OccupantsCard tenantId={id} occupants={toOccupantRows(t.occupants)} />
+          <TenantChangesCard changes={changes.map((c) => ({ id: String(c._id), field: c.field, from: c.from ?? "", to: c.to ?? "", at: c.at }))} />
           <DocumentsCard tenantId={id} />
         </div>
         <div className="space-y-6">
@@ -158,6 +163,7 @@ export default async function TenantPage({ params }: { params: Promise<{ id: str
             />
             {t.notes && <p className="mt-5 text-sm whitespace-pre-line text-slate-600">{t.notes}</p>}
           </Card>
+          <TenantPortalCard tenantId={id} phone={t.phone} portal={t.portal} />
           <Card title="Danger zone">
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-3">

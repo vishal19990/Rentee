@@ -5,6 +5,7 @@ import { enquiryNotificationKeyFilter, enquiryNotificationSpecs } from "./enquir
 import { loadRentals, toId } from "./data";
 import {
   DEFAULT_THRESHOLDS,
+  EVENT_NOTIFICATION_TYPES,
   SYNC_INTERVAL_MS,
   desiredNotifications,
   planSync,
@@ -130,7 +131,7 @@ export async function syncNotifications(
         ],
       }
     : { resolvedAt: null };
-  const existing = await Notification.find({ $or: [subjectFilter, { key: { $in: desiredKeys } }] })
+  const existing = await Notification.find({ $or: [subjectFilter, { key: { $in: desiredKeys } }], type: { $nin: EVENT_NOTIFICATION_TYPES } })
     .select("key title body resolvedAt")
     .lean();
 

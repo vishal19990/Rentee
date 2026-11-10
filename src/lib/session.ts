@@ -36,6 +36,8 @@ export async function verifySession(token: string | undefined | null): Promise<S
   try {
     const { payload } = await jwtVerify(token, secretKey(), { algorithms: ["HS256"] });
     if (typeof payload.sub !== "string") return null;
+    // Admin tokens carry no audience; anything with one (e.g. a tenant portal token) is not an admin session.
+    if (payload.aud !== undefined) return null;
     return {
       sub: payload.sub,
       name: typeof payload.name === "string" ? payload.name : "",
